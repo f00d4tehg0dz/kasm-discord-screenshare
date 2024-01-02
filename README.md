@@ -10,6 +10,7 @@ Utilizes [Discord Screen Audio](https://github.com/maltejur/discord-screenaudio.
 
 **Working Demo**
 - ![](https://github.com/f00d4tehg0dz/kasm-discord-screenshare/blob/main/screenshots/demo.gif)
+
 **Instructions**
 - ![](https://github.com/f00d4tehg0dz/kasm-discord-screenshare/blob/main/screenshots/instructions.gif)
 

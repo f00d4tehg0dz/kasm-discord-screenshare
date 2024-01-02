@@ -1,9 +1,19 @@
 # Kasm-Discord-Screenshare
 
-Screenshare your [n.eko](https://github.com/m1k1o/neko), [MovieNight](https://github.com/zorchenhimer/MovieNight/tree/master), [Owncast](https://github.com/owncast/owncast), [Restreamer](https://github.com/datarhei/restreamer), **rtmp**, or **WebRTC** streams directly to Discord without needing to use the same PC and tie up rescources
+Screenshare your [n.eko](https://github.com/m1k1o/neko), [MovieNight](https://github.com/zorchenhimer/MovieNight/tree/master), [Owncast](https://github.com/owncast/owncast), [Restreamer](https://github.com/datarhei/restreamer), **WebBrowser**, **rtmp**, or **WebRTC** streams directly to Discord without needing to use the same PC and tie up resources!
 
 Utilizes [Discord Screen Audio](https://github.com/maltejur/discord-screenaudio.git) by [maltejur](https://github.com/maltejur/)
 
+---
+
+### Demo
+
+**Working Demo**
+- ![](https://github.com/f00d4tehg0dz/kasm-discord-screenshare/blob/main/screenshots/demo.gif)
+**Instructions**
+- ![](https://github.com/f00d4tehg0dz/kasm-discord-screenshare/blob/main/screenshots/instructions.gif)
+
+---
 
 ### Prerequisites
 
@@ -102,16 +112,11 @@ Understanding the configuration settings is crucial for optimizing the Docker im
   If you prefer using Mozilla Firefox over Google Chrome, you can compile and run it in no-sandbox mode using the `--no-sandbox` flag. This requires editing the Dockerfile to replace Google Chrome with Mozilla Firefox `.deb`.
 ---
 
-## Demo
-
-For privacy reasons I don't believe I can share a demo. If I find a solution, I will certaintly do so
-
-
 ## FAQ
 
 #### Can I screenshare and broadcast on a Discord server stage?
 
-Currently only works with screenshare in individual channels. I'm exploring solutions for Broadcast on Stage options
+Yes you can! The screenshare button directly under the Discord Broadcast-Stage does not activate properly. Use the screenshare button in the left sidebar. 
 
 #### Do I need a Discord account dedicated for this?
 

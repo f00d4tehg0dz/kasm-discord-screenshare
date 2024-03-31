@@ -68,9 +68,14 @@ RUN curl -L "https://github.com/edisionnano/Screenshare-with-audio-on-Discord-wi
 # Clone and build discord-screenaudio
 RUN git clone https://github.com/maltejur/discord-screenaudio.git \
     && cd discord-screenaudio \
+    && sed -i 's/panel_bd8c76 activityPanel__22355/panel_bd8c76 activityPanel_b73e7a/g' assets/userscript.js \
+    && sed -i 's/actionButtons_b58cbb/actionButtons__85e3c/g' assets/userscript.js \
+    && sed -i 's/container_ca50b9/container_debb33/g' assets/userscript.js \
+    && sed -i 's/wrapper__3f3a7 > div > div > .controlButton_ab2899/wrapper__4d4fe > div > div > .controlButton__863c7/g' assets/style.css \
     && cmake -B build \
     && cmake --build build --config Release \
     && cmake --install build
+
 
 # Copy the icon file to the appropriate location
 COPY ./icons/discord.png /usr/share/icons/hicolor/48x48/apps/

@@ -3,6 +3,9 @@ ARG BASE_IMAGE="core-ubuntu-jammy"
 FROM kasmweb/$BASE_IMAGE:$BASE_TAG
 USER root
 
+#kasm_user
+#password
+
 ENV HOME /home/kasm-default-profile
 ENV STARTUPDIR /dockerstartup
 ENV INST_SCRIPTS $STARTUPDIR/install
@@ -45,44 +48,56 @@ RUN apt-get update -y \
     cmake            \
     && ldconfig      
 
-# Install chrome 88
-RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-RUN apt-get install -y ./google-chrome-stable_current_amd64.deb
-
-# Install chromedriver 88
-RUN wget https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip
-RUN unzip chromedriver_linux64.zip
-RUN mv chromedriver /bin
-
-# Copy the icon file to the appropriate location
-COPY ./icons/chromium.png /usr/share/icons/hicolor/48x48/apps/
-
-# Create desktop shortcut for Chromium
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=Chromium Web Browser\nComment=Browse the World Wide Web\nGenericName=Web Browser\nExec=/usr/bin/google-chrome-stable --no-sandbox %U\nIcon=chromium\nType=Application\nCategories=Network;WebBrowser;\n' > $HOME/Desktop/chromium.desktop \
-    && chmod +x $HOME/Desktop/chromium.desktop
-
-# Download and setup virtmic
+    # Download and setup virtmic
 RUN curl -L "https://github.com/edisionnano/Screenshare-with-audio-on-Discord-with-Linux/blob/main/virtmic?raw=true" -o virtmic \
     && chmod +x virtmic
 
-# Clone and build discord-screenaudio
-RUN git clone https://github.com/maltejur/discord-screenaudio.git \
-    && cd discord-screenaudio \
-    && sed -i 's/panel_bd8c76 activityPanel__22355/panel_bd8c76 activityPanel_b73e7a/g' assets/userscript.js \
-    && sed -i 's/actionButtons_b58cbb/actionButtons__85e3c/g' assets/userscript.js \
-    && sed -i 's/container_ca50b9/container_debb33/g' assets/userscript.js \
-    && sed -i 's/wrapper__3f3a7 > div > div > .controlButton_ab2899/wrapper__4d4fe > div > div > .controlButton__863c7/g' assets/style.css \
-    && cmake -B build \
-    && cmake --build build --config Release \
-    && cmake --install build
+# Install Flatpak and add the Flathub repository
+RUN apt-get update && apt-get install -y flatpak \
+    && flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
+# Install Chromium
+#RUN flatpak install -y flathub org.chromium.Chromium
 
-# Copy the icon file to the appropriate location
-COPY ./icons/discord.png /usr/share/icons/hicolor/48x48/apps/
+# Install discord-screenaudio from Flathub
+RUN flatpak install -y de.shorsh.discord-screenaudio
 
-# Create desktop shortcut for discord-screenaudio
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord ScreenAudio\nComment=Custom Discord client with screen audio streaming\nExec=/usr/local/bin/discord-screenaudio\nIcon=discord\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/discord-audio.desktop \
-    && chmod +x $HOME/Desktop/discord-audio.desktop
+# Install Discord from Flathub
+RUN flatpak install -y flathub com.discordapp.Discord
+
+# Install Firefox from tarball
+RUN apt-get update && apt-get install -y wget \
+    && wget -O firefox.tar.bz2 "https://download.mozilla.org/?product=firefox-latest&os=linux64" \
+    && tar xjf firefox.tar.bz2 -C /opt \
+    && ln -s /opt/firefox/firefox /usr/bin/firefox \
+    && rm firefox.tar.bz2
+
+# Copy the icons for Firefox and pipewire-screenaudio to the appropriate locations
+COPY ./icons/firefox.png /usr/share/icons/hicolor/48x48/apps/firefox.png
+COPY ./icons/discord.png /usr/share/icons/hicolor/48x48/apps/discord.png
+#COPY ./icons/chromium.png /usr/share/icons/hicolor/48x48/apps/
+
+# Create Desktop directory for kasm-user
+RUN mkdir -p /home/kasm-user/Desktop/
+
+# Create desktop shortcuts for Firefox, Discord Screen Audio, and Discord
+# Create Desktop directory for kasm-user
+RUN mkdir -p /home/kasm-user/Desktop/
+
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord-ScreenAudio\nComment=Discord-ScreenAudio\nExec=/var/lib/flatpak/app/de.shorsh.discord-screenaudio/current/active/files/bin/discord-screenaudio\nIcon=Icon=/usr/share/icons/hicolor/48x48/apps/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/discord-screenaudio.desktop \
+    && chmod +x $HOME/Desktop/discord-screenaudio.desktop
+
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Firefox\nComment=Mozilla Firefox\nExec=/opt/firefox/firefox\nIcon=Icon=/usr/share/icons/hicolor/48x48/apps/firefox.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/firefox.desktop \
+    && chmod +x $HOME/Desktop/firefox.desktop
+
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord\nComment=Discord\nExec=/var/lib/flatpak/app/com.discordapp.Discord/current/active/files/discord/Discord\nIcon=Icon=/usr/share/icons/hicolor/48x48/apps/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/discord.desktop \
+    && chmod +x $HOME/Desktop/discord.desktop
+
+# Create Downloads directory for kasm-user
+RUN mkdir -p /home/kasm-user/Downloads/
+
+# Copy the default profile to the home directory
+RUN cp -rp /home/kasm-default-profile/. /home/kasm-user/ --no-preserve=mode
 
 # https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.0.4/pipewire-1.0.4.tar
 ARG PW_VERSION=1.0.4
@@ -102,22 +117,45 @@ RUN cd $BUILD_DIR_BASE/pipewire-${PW_VERSION} \
     && meson compile -C $BUILD_DIR \
     && meson install -C $BUILD_DIR
 
+# Install libva and VA-API driver
+RUN apt-get update && apt-get install -y libva2 vainfo \
+    && apt-get install -y libva-drm2 libva-x11-2 i965-va-driver vainfo \
+    && apt-get install -y mesa-va-drivers
+
+# Install pipewire-screenaudio dependencies
+RUN apt-get install -y gawk jq pipewire
+
+# Clone and install pipewire-screenaudio
+RUN git clone https://github.com/IceDBorn/pipewire-screenaudio.git \
+    && cd pipewire-screenaudio \
+    && bash install.sh
+
 # Cleanup
 RUN apt-get autoclean \
-    && apt-get autoremove -y \
+    #&& apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/* \
     && chmod -R 755 /home/kasm-default-profile
-
+   
 ######### End Customizations ###########
 
 COPY ./vnc_startup.sh $STARTUPDIR/vnc_startup.sh
 
 # Userspace Runtime
 ENV HOME /home/kasm-user
+
+# Set environment variables
+ENV XDG_DATA_DIRS=/app/data:/usr/local/share:/usr/share:/var/lib/flatpak/exports/share:/home/kasm-user/.local/share/flatpak/exports/share
+
 WORKDIR $HOME
 RUN mkdir -p $HOME && chown -R 1000:0 $HOME
+
+# Set executable permission and allow launching for desktop files
+RUN chmod +x /home/kasm-user/Desktop/*.desktop \
+    && chmod +x /home/kasm-user/Desktop/*.desktop
+    
+# Download pipewire-screenaudio Firefox add-on XPI file
+RUN wget -O /home/kasm-user/Downloads/pipewire-screenaudio.xpi "https://addons.mozilla.org/firefox/downloads/latest/pipewire-screenaudio/addon-1564124-latest.xpi"
 RUN mkdir -p /run/dbus && chown -R 1000:0 /run/dbus
 RUN mkdir -p /dev/snd && chown -R 1000:0 /dev/snd
 RUN $STARTUPDIR/set_user_permission.sh $HOME
 USER 1000
-#CMD ["--tail-log"]

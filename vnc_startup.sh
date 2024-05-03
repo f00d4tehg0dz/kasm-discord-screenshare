@@ -375,6 +375,8 @@ echo -e "${VNC_PW}\n${VNC_PW}\n" | kasmvncpasswd -u kasm_user -wo
 echo -e "${VNC_PW}\n${VNC_PW}\n" | kasmvncpasswd -u kasm_viewer -r
 chmod 600 $PASSWD_PATH
 
+# Install Firefox addon
+#firefox --install-addon https://addons.mozilla.org/firefox/downloads/latest/pipewire-screenaudio/addon-1564124-latest.xpi
 
 # start processes
 start_kasmvnc

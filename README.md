@@ -53,19 +53,31 @@ Follow these steps to install and set up the Kasm Workspace with our Docker imag
 3. **Configuring the Workspace**:
    Configure your Kasm Workspace with the required specifications. This includes setting the number of cores to `4`, memory to `4096 MB`, and specifying the Persistent Profile Path.
 
-4. **Building the Docker Image (Optional)**:
+4. **Install Firefox Extension pipewire-screenaudio.xpi**
+   Launch Firefox and navigate to the extensions menu to install Local Extension. Navigate to the folder /home/kasm-user/Desktop/Downloads/ and select `pipewire-screenaudio.xpi` to install.
+ 
+5a. **How to Screen Share the Audio (Option #1)**
+   When viewing multimedia on Firefox for the first time, click on the `pipewire-screenaudio` extension (top-right) and choose Desktop Audio or Firefox Audio. 
+   Launch Discord and choose Screen Share like normal.
+
+5b. **How to Screen Share with Audio (Option #2)**
+   Launch Discord Screen Audio and choose Screen Share. 
+   A dialog will popup, and you must choose Desktop Audio or Firefox Audio.
+ 
+6. **Building the Docker Image (Optional)**:
    If you wish to build the Docker image locally, use the following command:
    ```bash
-   sudo docker build -t jammy-discord-screenshare:sudo -f Dockerfile .
+   sudo docker build -t f00d4tehg0dz/kasm-discord-screenshare:latest -f Dockerfile .
    ```
 
-5. **Running the Docker Container**:
+7. **Running the Docker Container (Optional)**:
    To run the Docker container with the necessary configurations, use the command:
    ```bash
-   sudo docker run --rm -it --shm-size=512m -p 6901:6901 -e VNC_PW=password jammy-discord-screenshare:sudo
+   sudo docker run --rm -it --shm-size=512m -p 6901:6901 -e VNC_PW=password f00d4tehg0dz/kasm-discord-screenshare:latest
    ```
+  Default Username is `kasm-user` and default password is password
 
-6. **Verifying the Setup**:
+8. **Verifying the Setup (Optional)**:
    After running the Docker container, verify that the Kasm Workspace is set up correctly and that the Discord screenshare functionality is operational.
 
 ### Configuration Details
@@ -123,15 +135,9 @@ Yes you can! The screenshare button directly under the Discord Broadcast-Stage d
 
 Preferably
 
-#### Do I have to use Google Chrome?
+#### Do I have to use Mozilla Firefox?
 
-No, you can compile and run Mozilla Firefox in no-sandbox mode.
-
-```bash
---no-sandbox
-```
-
-Edit the **Dockerfile** and replace Google Chrome with Mozilla Firefox `.deb`
+Currently the pipewire-screenaudio.xpi extension works with FireFox. So it's best to stick with that. Older versions of this Dockerfile did include Chromium without extension however.
 
 ## Feedback
 

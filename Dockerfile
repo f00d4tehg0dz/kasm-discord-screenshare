@@ -17,6 +17,11 @@ WORKDIR $HOME
 RUN apt-get update -y \
     && apt-get remove -y pulseaudio \
     && rm /usr/share/alsa/alsa.conf.d/50-pulseaudio.conf \
+    && apt-get install -y build-essential qtbase5-dev qtwebengine5-dev libkf5notifications-dev wget libkf5xmlgui-dev libkf5globalaccel-dev libpipewire-0.3 pipewire-media-session pipewire-audio-client-libraries libspa-0.2-jack libspa-0.2-bluetooth pulseaudio-module-bluetooth- debhelper-compat findutils git libasound2-dev libdbus-1-dev libglib2.0-dev libsbc-dev libsdl2-dev libudev-dev libv4l-dev libx11-dev ninja-build pkg-config python3-docutils python3-pip meson dbus-x11 rtkit fonts-liberation libu2f-udev xdg-utils unzip cmake \
+    && ldconfig      
+
+# Remove PulseAudio and Install PipeWire
+RUN apt-get update -y \
     && apt-get install -y build-essential qtbase5-dev qtwebengine5-dev libkf5notifications-dev libkf5xmlgui-dev libkf5globalaccel-dev libpipewire-0.3 \
     && apt-get install -y pipewire-media-session- \
     && apt-get install -y pipewire-audio-client-libraries \
@@ -48,6 +53,7 @@ RUN apt-get update -y \
     cmake            \
     && ldconfig      
 
+RUN apt-get install -y libva-dev libv4l-dev
     # Download and setup virtmic
 RUN curl -L "https://github.com/edisionnano/Screenshare-with-audio-on-Discord-with-Linux/blob/main/virtmic?raw=true" -o virtmic \
     && chmod +x virtmic
@@ -66,7 +72,7 @@ RUN flatpak install -y de.shorsh.discord-screenaudio
 RUN flatpak install -y flathub com.discordapp.Discord
 
 # Install Firefox from tarball
-RUN apt-get update && apt-get install -y wget \
+RUN apt-get update \
     && wget -O firefox.tar.bz2 "https://download.mozilla.org/?product=firefox-latest&os=linux64" \
     && tar xjf firefox.tar.bz2 -C /opt \
     && ln -s /opt/firefox/firefox /usr/bin/firefox \
@@ -151,8 +157,9 @@ RUN mkdir -p $HOME && chown -R 1000:0 $HOME
 
 # Set executable permission and allow launching for desktop files
 RUN chmod +x /home/kasm-user/Desktop/*.desktop \
-    && chmod +x /home/kasm-user/Desktop/*.desktop
-    
+    && chmod +x /home/kasm-user/Desktop/*.desktop \
+    && chmod a+x /home/kasm-user/Desktop/*.desktop \
+    && chmod 644 /home/kasm-user/Desktop/*.desktop
 # Download pipewire-screenaudio Firefox add-on XPI file
 RUN wget -O /home/kasm-user/Downloads/pipewire-screenaudio.xpi "https://addons.mozilla.org/firefox/downloads/latest/pipewire-screenaudio/addon-1564124-latest.xpi"
 RUN mkdir -p /run/dbus && chown -R 1000:0 /run/dbus

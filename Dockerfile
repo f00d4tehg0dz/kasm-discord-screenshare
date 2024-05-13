@@ -66,8 +66,8 @@ COPY /icons/discord.png /usr/share/icons/hicolor/48x48/apps/discord.png
 RUN mkdir -p /home/kasm-user/Desktop/
 
 # Create desktop shortcuts for Firefox, Discord Screen Audio, and Discord
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord Screen Audio\nComment=Flatpak Discord Screen Audio\nExec=/usr/bin/flatpak run --branch=stable --arch=x86_64 de.shorsh.discord-screenaudio "$@"\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=AudioVideo;\n' > /home/kasm-user/Desktop/discord-screenaudio.desktop \
-    && chmod +x /home/kasm-user/Desktop/discord-screenaudio.desktop
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord Screen Audio\nComment=Flatpak Discord Screen Audio\nExec=/usr/bin/flatpak run --branch=stable --arch=x86_64 de.shorsh.discord-screenaudio "$@"\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=AudioVideo;\n' > $HOME/Desktop/discord-screenaudio.desktop \
+    && chmod +x $HOME/Desktop/discord-screenaudio.desktop
 
 RUN echo '[Desktop Entry]\nVersion=1.0\nName=Firefox\nComment=Mozilla Firefox\nExec=/opt/firefox/firefox\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/firefox.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/firefox.desktop \
     && chmod +x $HOME/Desktop/firefox.desktop

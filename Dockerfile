@@ -20,41 +20,9 @@ RUN apt-get update -y \
     && apt-get install -y build-essential qtbase5-dev qtwebengine5-dev libkf5notifications-dev wget libkf5xmlgui-dev libkf5globalaccel-dev libpipewire-0.3 pipewire-media-session pipewire-audio-client-libraries libspa-0.2-jack libspa-0.2-bluetooth pulseaudio-module-bluetooth- debhelper-compat findutils git libasound2-dev libdbus-1-dev libglib2.0-dev libsbc-dev libsdl2-dev libudev-dev libv4l-dev libx11-dev ninja-build pkg-config python3-docutils python3-pip meson dbus-x11 rtkit fonts-liberation libu2f-udev xdg-utils unzip cmake \
     && ldconfig      
 
-# Remove PulseAudio and Install PipeWire
-RUN apt-get update -y \
-    && apt-get install -y build-essential qtbase5-dev qtwebengine5-dev libkf5notifications-dev libkf5xmlgui-dev libkf5globalaccel-dev libpipewire-0.3 \
-    && apt-get install -y pipewire-media-session- \
-    && apt-get install -y pipewire-audio-client-libraries \
-    && apt-get install -y libspa-0.2-jack libspa-0.2-bluetooth pulseaudio-module-bluetooth- \
-    && apt-get install -y debhelper-compat \
-    findutils        \
-    git              \
-    libasound2-dev   \
-    libdbus-1-dev    \
-    libglib2.0-dev   \
-    libsbc-dev       \
-    libsdl2-dev      \
-    libudev-dev      \
-    libva-dev        \
-    libv4l-dev       \
-    libx11-dev       \
-    ninja-build      \
-    pkg-config       \
-    python3-docutils \
-    python3-pip      \
-    meson            \
-    pulseaudio       \
-    dbus-x11         \
-    rtkit -y         \
-    fonts-liberation \
-    libu2f-udev      \
-    xdg-utils        \
-    unzip            \
-    cmake            \
-    && ldconfig      
-
 RUN apt-get install -y libva-dev libv4l-dev
-    # Download and setup virtmic
+
+# Download and setup virtmic
 RUN curl -L "https://github.com/edisionnano/Screenshare-with-audio-on-Discord-with-Linux/blob/main/virtmic?raw=true" -o virtmic \
     && chmod +x virtmic
 
@@ -78,25 +46,28 @@ RUN apt-get update \
     && ln -s /opt/firefox/firefox /usr/bin/firefox \
     && rm firefox.tar.bz2
 
-# Copy the icons for Firefox and pipewire-screenaudio to the appropriate locations
-COPY ./icons/firefox.png /usr/share/icons/hicolor/48x48/apps/firefox.png
-COPY ./icons/discord.png /usr/share/icons/hicolor/48x48/apps/discord.png
-#COPY ./icons/chromium.png /usr/share/icons/hicolor/48x48/apps/
+# Copy the icons for Firefox and Discords to Ubuntu-Mono-Dark icons theme
+COPY /icons/firefox.png /usr/share/icons/ubuntu-mono-dark/apps/48/firefox.png
+COPY /icons/discord.png /usr/share/icons/ubuntu-mono-dark/apps/48/discord.png
+# Copy the icons for Firefox and Discords to Ubuntu-Mono-Light icons theme
+COPY /icons/firefox.png /usr/share/icons/ubuntu-mono-light/apps/48/firefox.png
+COPY /icons/discord.png /usr/share/icons/ubuntu-mono-light/apps/48/discord.png
+# Copy the icons for Firefox and Discords to the appropriate locations for HiColor icons theme
+COPY /icons/firefox.png /usr/share/icons/hicolor/48x48/apps/firefox.png
+COPY /icons/discord.png /usr/share/icons/hicolor/48x48/apps/discord.png
+#COPY ./icons/chromium.png /usr/share/icons/ubuntu-mono-dark/apps/48/
 
 # Create Desktop directory for kasm-user
 RUN mkdir -p /home/kasm-user/Desktop/
 
 # Create desktop shortcuts for Firefox, Discord Screen Audio, and Discord
-# Create Desktop directory for kasm-user
-RUN mkdir -p /home/kasm-user/Desktop/
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord Screen Audio\nComment=Flatpak Discord Screen Audio\nExec=/usr/bin/flatpak run --branch=stable --arch=x86_64 de.shorsh.discord-screenaudio "$@"\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=AudioVideo;\n' > /home/kasm-user/Desktop/discord-screenaudio.desktop \
+    && chmod +x /home/kasm-user/Desktop/discord-screenaudio.desktop
 
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord-ScreenAudio\nComment=Discord-ScreenAudio\nExec=/var/lib/flatpak/app/de.shorsh.discord-screenaudio/current/active/files/bin/discord-screenaudio\nIcon=Icon=/usr/share/icons/hicolor/48x48/apps/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/discord-screenaudio.desktop \
-    && chmod +x $HOME/Desktop/discord-screenaudio.desktop
-
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=Firefox\nComment=Mozilla Firefox\nExec=/opt/firefox/firefox\nIcon=Icon=/usr/share/icons/hicolor/48x48/apps/firefox.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/firefox.desktop \
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Firefox\nComment=Mozilla Firefox\nExec=/opt/firefox/firefox\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/firefox.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/firefox.desktop \
     && chmod +x $HOME/Desktop/firefox.desktop
 
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord\nComment=Discord\nExec=/var/lib/flatpak/app/com.discordapp.Discord/current/active/files/discord/Discord\nIcon=Icon=/usr/share/icons/hicolor/48x48/apps/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/discord.desktop \
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord\nComment=Discord\nExec=/var/lib/flatpak/app/com.discordapp.Discord/current/active/files/discord/Discord\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/discord.desktop \
     && chmod +x $HOME/Desktop/discord.desktop
 
 # Create Downloads directory for kasm-user
@@ -126,10 +97,7 @@ RUN cd $BUILD_DIR_BASE/pipewire-${PW_VERSION} \
 # Install libva and VA-API driver
 RUN apt-get update && apt-get install -y libva2 vainfo \
     && apt-get install -y libva-drm2 libva-x11-2 i965-va-driver vainfo \
-    && apt-get install -y mesa-va-drivers
-
-# Install pipewire-screenaudio dependencies
-RUN apt-get install -y gawk jq pipewire
+    && apt-get install -y mesa-va-drivers gawk jq
 
 # Clone and install pipewire-screenaudio
 RUN git clone https://github.com/IceDBorn/pipewire-screenaudio.git \
@@ -138,8 +106,9 @@ RUN git clone https://github.com/IceDBorn/pipewire-screenaudio.git \
 
 # Cleanup
 RUN apt-get autoclean \
-    #&& apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/* \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/* \          
+    && rm -rf /home/kasm-default-profile/pipwire-1.0.4.tar \
     && chmod -R 755 /home/kasm-default-profile
    
 ######### End Customizations ###########
@@ -158,10 +127,11 @@ RUN mkdir -p $HOME && chown -R 1000:0 $HOME
 # Set executable permission and allow launching for desktop files
 RUN chmod +x /home/kasm-user/Desktop/*.desktop \
     && chmod +x /home/kasm-user/Desktop/*.desktop \
-    && chmod a+x /home/kasm-user/Desktop/*.desktop \
     && chmod 644 /home/kasm-user/Desktop/*.desktop
+
 # Download pipewire-screenaudio Firefox add-on XPI file
 RUN wget -O /home/kasm-user/Downloads/pipewire-screenaudio.xpi "https://addons.mozilla.org/firefox/downloads/latest/pipewire-screenaudio/addon-1564124-latest.xpi"
+RUN cp /home/kasm-user/Downloads/pipewire-screenaudio.xpi /home/kasm-default-profile/Downloads/pipewire-screenaudio.xpi
 RUN mkdir -p /run/dbus && chown -R 1000:0 /run/dbus
 RUN mkdir -p /dev/snd && chown -R 1000:0 /dev/snd
 RUN $STARTUPDIR/set_user_permission.sh $HOME

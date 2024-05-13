@@ -22,6 +22,11 @@ RUN apt-get update -y \
 
 RUN apt-get install -y libva-dev libv4l-dev
 
+# Install libva and VA-API driver
+RUN apt-get update && apt-get install -y libva2 vainfo \
+    && apt-get install -y libva-drm2 libva-x11-2 i965-va-driver vainfo \
+    && apt-get install -y mesa-va-drivers gawk jq
+
 # Download and setup virtmic
 RUN curl -L "https://github.com/edisionnano/Screenshare-with-audio-on-Discord-with-Linux/blob/main/virtmic?raw=true" -o virtmic \
     && chmod +x virtmic
@@ -71,7 +76,8 @@ RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord\nComment=Discord\nExec=/var
     && chmod +x $HOME/Desktop/discord.desktop
 
 # Create Downloads directory for kasm-user
-RUN mkdir -p /home/kasm-user/Downloads/
+RUN mkdir -p /home/kasm-user/Downloads/ \
+    && mkdir -p /home/kasm-default-profile/Downloads/
 
 # Copy the default profile to the home directory
 RUN cp -rp /home/kasm-default-profile/. /home/kasm-user/ --no-preserve=mode
@@ -94,11 +100,6 @@ RUN cd $BUILD_DIR_BASE/pipewire-${PW_VERSION} \
     && meson compile -C $BUILD_DIR \
     && meson install -C $BUILD_DIR
 
-# Install libva and VA-API driver
-RUN apt-get update && apt-get install -y libva2 vainfo \
-    && apt-get install -y libva-drm2 libva-x11-2 i965-va-driver vainfo \
-    && apt-get install -y mesa-va-drivers gawk jq
-
 # Clone and install pipewire-screenaudio
 RUN git clone https://github.com/IceDBorn/pipewire-screenaudio.git \
     && cd pipewire-screenaudio \
@@ -107,11 +108,9 @@ RUN git clone https://github.com/IceDBorn/pipewire-screenaudio.git \
 # Cleanup
 RUN apt-get autoclean \
     && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/* \          
-    && rm -rf /home/kasm-default-profile/pipwire-1.0.4.tar \
+    && rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/* \
+    && rm -rf /home/kasm-default-profile/pipewire-1.0.4.tar \
     && chmod -R 755 /home/kasm-default-profile
-   
-######### End Customizations ###########
 
 COPY ./vnc_startup.sh $STARTUPDIR/vnc_startup.sh
 
@@ -127,7 +126,9 @@ RUN mkdir -p $HOME && chown -R 1000:0 $HOME
 # Set executable permission and allow launching for desktop files
 RUN chmod +x /home/kasm-user/Desktop/*.desktop \
     && chmod +x /home/kasm-user/Desktop/*.desktop \
-    && chmod 644 /home/kasm-user/Desktop/*.desktop
+    && chmod 644 /home/kasm-user/Desktop/*.desktop \
+    && chmod +x /home/kasm-default-profile/virtmic \
+    && chmod +x /home/kasm-user/virtmic
 
 # Download pipewire-screenaudio Firefox add-on XPI file
 RUN wget -O /home/kasm-user/Downloads/pipewire-screenaudio.xpi "https://addons.mozilla.org/firefox/downloads/latest/pipewire-screenaudio/addon-1564124-latest.xpi"

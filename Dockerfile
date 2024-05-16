@@ -44,6 +44,9 @@ RUN flatpak install -y de.shorsh.discord-screenaudio
 # Install Discord from Flathub
 RUN flatpak install -y flathub com.discordapp.Discord
 
+# Install VLC from Flathub
+RUN flatpak install -y flathub org.videolan.VLC
+
 # Install Firefox from tarball
 RUN apt-get update \
     && wget -O firefox.tar.bz2 "https://download.mozilla.org/?product=firefox-latest&os=linux64" \
@@ -51,29 +54,39 @@ RUN apt-get update \
     && ln -s /opt/firefox/firefox /usr/bin/firefox \
     && rm firefox.tar.bz2
 
-# Copy the icons for Firefox and Discords to Ubuntu-Mono-Dark icons theme
+# Copy the icons for Firefox, VLC and Discords to Ubuntu-Mono-Dark icons theme
 COPY /icons/firefox.png /usr/share/icons/ubuntu-mono-dark/apps/48/firefox.png
 COPY /icons/discord.png /usr/share/icons/ubuntu-mono-dark/apps/48/discord.png
-# Copy the icons for Firefox and Discords to Ubuntu-Mono-Light icons theme
+COPY /icons/vlc.png /usr/share/icons/ubuntu-mono-dark/apps/48/vlc.png
+# Copy the icons for Firefox, VLC and Discords to Ubuntu-Mono-Light icons theme
 COPY /icons/firefox.png /usr/share/icons/ubuntu-mono-light/apps/48/firefox.png
 COPY /icons/discord.png /usr/share/icons/ubuntu-mono-light/apps/48/discord.png
-# Copy the icons for Firefox and Discords to the appropriate locations for HiColor icons theme
+COPY /icons/vlc.png /usr/share/icons/ubuntu-mono-light/apps/48/vlc.png
+# Copy the icons for Firefox, VLC and Discords to the appropriate locations for HiColor icons theme
 COPY /icons/firefox.png /usr/share/icons/hicolor/48x48/apps/firefox.png
 COPY /icons/discord.png /usr/share/icons/hicolor/48x48/apps/discord.png
+COPY /icons/vlc.png /usr/share/icons/hicolor/48x48/apps/vlc.png
 #COPY ./icons/chromium.png /usr/share/icons/ubuntu-mono-dark/apps/48/
 
 # Create Desktop directory for kasm-user
 RUN mkdir -p /home/kasm-user/Desktop/
 
-# Create desktop shortcuts for Firefox, Discord Screen Audio, and Discord
+# Create desktop shortcuts for Firefox, VLC, Discord Screen Audio, and Discord
 RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord Screen Audio\nComment=Flatpak Discord Screen Audio\nExec=/usr/bin/flatpak run --branch=stable --arch=x86_64 de.shorsh.discord-screenaudio "$@"\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=AudioVideo;\n' > $HOME/Desktop/discord-screenaudio.desktop \
     && chmod +x $HOME/Desktop/discord-screenaudio.desktop
 
 RUN echo '[Desktop Entry]\nVersion=1.0\nName=Firefox\nComment=Mozilla Firefox\nExec=/opt/firefox/firefox\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/firefox.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/firefox.desktop \
     && chmod +x $HOME/Desktop/firefox.desktop
 
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord\nComment=Discord\nExec=/var/lib/flatpak/app/com.discordapp.Discord/current/active/files/discord/Discord\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/discord.desktop \
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord\nComment=Discord\nExec=/var/lib/flatpak/app/com.discordapp.Discord/current/active/export/bin/com.discordapp.Discord\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/discord.desktop \
     && chmod +x $HOME/Desktop/discord.desktop
+
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=VLC Media Player\nComment=Multimedia player\nExec=flatpak run org.videolan.VLC\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/vlc.png\nType=Application\nCategories=AudioVideo;Player;\n' > $HOME/Desktop/vlc.desktop \
+    && chmod +x $HOME/Desktop/vlc.desktop
+
+# Set Firefox as the default web browser
+RUN update-alternatives --install /usr/bin/x-www-browser x-www-browser /opt/firefox/firefox 200 \
+    && update-alternatives --install /usr/bin/gnome-www-browser gnome-www-browser /opt/firefox/firefox 200
 
 # Create Downloads directory for kasm-user
 RUN mkdir -p /home/kasm-user/Downloads/ \

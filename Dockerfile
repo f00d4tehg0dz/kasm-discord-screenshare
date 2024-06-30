@@ -38,8 +38,9 @@ RUN apt-get update && apt-get install -y flatpak \
 # Install Chromium
 #RUN flatpak install -y flathub org.chromium.Chromium
 
-# Install discord-screenaudio from Flathub
-RUN flatpak install -y de.shorsh.discord-screenaudio
+# Install Vesktop from Flathub - discord-screen-audio deprecated
+# RUN flatpak install -y de.shorsh.discord-screenaudio
+RUN flatpak install -y flathub dev.vencord.Vesktop
 
 # Install Discord from Flathub
 RUN flatpak install -y flathub com.discordapp.Discord
@@ -72,8 +73,8 @@ COPY /icons/vlc.png /usr/share/icons/hicolor/48x48/apps/vlc.png
 RUN mkdir -p /home/kasm-user/Desktop/
 
 # Create desktop shortcuts for Firefox, VLC, Discord Screen Audio, and Discord
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord Screen Audio\nComment=Flatpak Discord Screen Audio\nExec=/usr/bin/flatpak run --branch=stable --arch=x86_64 de.shorsh.discord-screenaudio "$@"\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=AudioVideo;\n' > $HOME/Desktop/discord-screenaudio.desktop \
-    && chmod +x $HOME/Desktop/discord-screenaudio.desktop
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Vesktop\nComment=Flatpak Vesktop\nExec=/usr/bin/flatpak run --branch=stable --arch=x86_64 dev.vencord.Vesktop "$@"\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=AudioVideo;\n' > $HOME/Desktop/vesktop.desktop \
+    && chmod +x $HOME/Desktop/vesktop.desktop
 
 RUN echo '[Desktop Entry]\nVersion=1.0\nName=Firefox\nComment=Mozilla Firefox\nExec=/opt/firefox/firefox\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/firefox.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/firefox.desktop \
     && chmod +x $HOME/Desktop/firefox.desktop

@@ -17,7 +17,7 @@ WORKDIR $HOME
 RUN apt-get update -y \
     && apt-get remove -y pulseaudio \
     && rm /usr/share/alsa/alsa.conf.d/50-pulseaudio.conf \
-    && apt-get install -y build-essential qtbase5-dev qtwebengine5-dev libkf5notifications-dev wget libkf5xmlgui-dev libkf5globalaccel-dev libpipewire-0.3 pipewire-media-session pipewire-audio-client-libraries libspa-0.2-jack libspa-0.2-bluetooth pulseaudio-module-bluetooth- debhelper-compat findutils git libasound2-dev libdbus-1-dev libglib2.0-dev libsbc-dev libsdl2-dev libudev-dev libv4l-dev libx11-dev ninja-build pkg-config python3-docutils python3-pip meson dbus-x11 rtkit fonts-liberation libu2f-udev xdg-utils unzip cmake \
+    && apt-get install -y build-essential qtbase5-dev qtwebengine5-dev libkf5notifications-dev wget libkf5xmlgui-dev libkf5globalaccel-dev libpipewire-0.3 pipewire-media-session pipewire-audio-client-libraries libspa-0.2-jack libspa-0.2-bluetooth pulseaudio-module-bluetooth- debhelper-compat findutils git libasound2-dev libdbus-1-dev libglib2.0-dev libsbc-dev libsdl2-dev libudev-dev libv4l-dev libx11-dev ninja-build pkg-config python3-docutils python3-pip meson dbus-x11 rtkit fonts-liberation libu2f-udev xdg-utils unzip cargo cmake \
     && ldconfig      
 
 RUN apt-get install -y libva-dev libv4l-dev

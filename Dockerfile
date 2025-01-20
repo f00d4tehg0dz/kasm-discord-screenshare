@@ -27,10 +27,6 @@ RUN apt-get update && apt-get install -y libva2 vainfo \
     && apt-get install -y libva-drm2 libva-x11-2 i965-va-driver vainfo \
     && apt-get install -y mesa-va-drivers gawk jq
 
-# Download and setup virtmic
-RUN curl -L "https://github.com/edisionnano/Screenshare-with-audio-on-Discord-with-Linux/blob/main/virtmic?raw=true" -o virtmic \
-    && chmod +x virtmic
-
 # Install Flatpak and add the Flathub repository
 RUN apt-get update && apt-get install -y flatpak \
     && flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
@@ -38,8 +34,7 @@ RUN apt-get update && apt-get install -y flatpak \
 # Install Chromium
 #RUN flatpak install -y flathub org.chromium.Chromium
 
-# Install Vesktop from Flathub - discord-screen-audio deprecated
-# RUN flatpak install -y de.shorsh.discord-screenaudio
+# Install Vesktop from Flathub
 RUN flatpak install -y flathub dev.vencord.Vesktop
 
 # Install Discord from Flathub
@@ -69,10 +64,15 @@ COPY /icons/discord.png /usr/share/icons/hicolor/48x48/apps/discord.png
 COPY /icons/vlc.png /usr/share/icons/hicolor/48x48/apps/vlc.png
 #COPY ./icons/chromium.png /usr/share/icons/ubuntu-mono-dark/apps/48/
 
+# Download and install WebCord .deb package
+RUN wget https://github.com/SpacingBat3/WebCord/releases/download/v4.10.3/webcord_4.10.3_amd64.deb \
+    && apt-get install -y ./webcord_4.10.3_amd64.deb \
+    && rm webcord_4.10.3_amd64.deb
+
 # Create Desktop directory for kasm-user
 RUN mkdir -p /home/kasm-user/Desktop/
 
-# Create desktop shortcuts for Firefox, VLC, Discord Screen Audio, and Discord
+# Create desktop shortcuts for Firefox, VLC, Vesktop, WebCord, and Discord
 RUN echo '[Desktop Entry]\nVersion=1.0\nName=Vesktop\nComment=Flatpak Vesktop\nExec=/usr/bin/flatpak run --branch=stable --arch=x86_64 dev.vencord.Vesktop "$@"\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=AudioVideo;\n' > $HOME/Desktop/vesktop.desktop \
     && chmod +x $HOME/Desktop/vesktop.desktop
 
@@ -84,6 +84,9 @@ RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord\nComment=Discord\nExec=/var
 
 RUN echo '[Desktop Entry]\nVersion=1.0\nName=VLC Media Player\nComment=Multimedia player\nExec=flatpak run org.videolan.VLC\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/vlc.png\nType=Application\nCategories=AudioVideo;Player;\n' > $HOME/Desktop/vlc.desktop \
     && chmod +x $HOME/Desktop/vlc.desktop
+
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=WebCord\nComment=WebCord Client\nExec=webcord\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/webcord.desktop \
+    && chmod +x $HOME/Desktop/webcord.desktop
 
 # Set Firefox as the default web browser
 RUN update-alternatives --install /usr/bin/x-www-browser x-www-browser /opt/firefox/firefox 200 \
@@ -140,9 +143,7 @@ RUN mkdir -p $HOME && chown -R 1000:0 $HOME
 # Set executable permission and allow launching for desktop files
 RUN chmod +x /home/kasm-user/Desktop/*.desktop \
     && chmod +x /home/kasm-user/Desktop/*.desktop \
-    && chmod 644 /home/kasm-user/Desktop/*.desktop \
-    && chmod +x /home/kasm-default-profile/virtmic \
-    && chmod +x /home/kasm-user/virtmic
+    && chmod 644 /home/kasm-user/Desktop/*.desktop
 
 # Download pipewire-screenaudio Firefox add-on XPI file
 RUN wget -O /home/kasm-user/Downloads/pipewire-screenaudio.xpi "https://addons.mozilla.org/firefox/downloads/latest/pipewire-screenaudio/addon-1564124-latest.xpi"

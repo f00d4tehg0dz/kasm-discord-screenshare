@@ -48,7 +48,7 @@ dbus-daemon --system --fork
 
 # startup/30_pipewire.sh
 pipewire &
-pipewire-media-session &
+wireplumber &
 pipewire-pulse &
 PIPEWIRE_LATENCY=2000/44100 pipewire no_proxy=127.0.0.1 ffmpeg -v verbose -f pipewire -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio > /dev/null 2>&1 &
 
@@ -220,8 +220,10 @@ function start_audio_out (){
 
         if [ "${START_PIPEWIRE:-0}" == "1" ] ;
         then
-            echo "Starting Pipe"
+            echo "Starting PipeWire"
 			pipewire &
+			wireplumber &
+			pipewire-pulse &
         fi
 
 		if [[ $DEBUG == true ]]; then
@@ -316,6 +318,12 @@ function start_printer (){
 	fi
 }
 
+# function start_virtmic () {
+#     echo 'Configuring Virtmic to use Firefox'
+#     echo "Firefox" | /home/kasm-user/virtmic
+# 	echo "Firefox" | /home/kasm-default-profile/virtmic
+# }
+
 function custom_startup (){
 	custom_startup_script=/dockerstartup/custom_startup.sh
 	if [ -f "$custom_startup_script" ]; then
@@ -384,9 +392,11 @@ start_audio_out
 start_audio_in
 start_upload
 start_gamepad
+#start_virtmic
 profile_size_check &
 start_webcam
 start_printer
+
 
 STARTUP_COMPLETE=1
 

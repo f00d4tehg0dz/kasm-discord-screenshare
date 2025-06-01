@@ -1,54 +1,81 @@
-ARG BASE_TAG="develop"
-ARG BASE_IMAGE="core-ubuntu-jammy"
-FROM kasmweb/$BASE_IMAGE:$BASE_TAG
-USER root
-
 #kasm_user
 #password
+ARG BASE_TAG="develop"
+ARG BASE_IMAGE="core-ubuntu-noble"
+FROM kasmweb/$BASE_IMAGE:$BASE_TAG
+
+USER root
 
 ENV HOME /home/kasm-default-profile
 ENV STARTUPDIR /dockerstartup
-ENV INST_SCRIPTS $STARTUPDIR/install
 WORKDIR $HOME
 
+### Envrionment config 
+ENV DEBIAN_FRONTEND=noninteractive \
+    SKIP_CLEAN=true \
+    KASM_RX_HOME=$STARTUPDIR/kasmrx \
+    DONT_PROMPT_WSL_INSTALL="No_Prompt_please" \
+    INST_DIR=$STARTUPDIR/install \
+    INST_SCRIPTS="/ubuntu/install/tools/install_tools_deluxe.sh \
+                  /ubuntu/install/misc/install_tools.sh \
+                  /ubuntu/install/firefox/install_firefox.sh \
+                  /ubuntu/install/vs_code/install_vs_code.sh \
+                  /ubuntu/install/gamepad_utils/install_gamepad_utils.sh \
+                  /ubuntu/install/cleanup/cleanup.sh"
+           
 ######### Customize Container Here ###########
-
-# Remove PulseAudio and Install PipeWire
-RUN apt-get update -y \
-    && apt-get remove -y pulseaudio \
-    && rm /usr/share/alsa/alsa.conf.d/50-pulseaudio.conf \
-    && apt-get install -y build-essential qtbase5-dev qtwebengine5-dev libkf5notifications-dev wget libkf5xmlgui-dev libkf5globalaccel-dev libpipewire-0.3 pipewire-media-session pipewire-audio-client-libraries libspa-0.2-jack libspa-0.2-bluetooth pulseaudio-module-bluetooth- debhelper-compat findutils git libasound2-dev libdbus-1-dev libglib2.0-dev libsbc-dev libsdl2-dev libudev-dev libv4l-dev libx11-dev ninja-build pkg-config python3-docutils python3-pip meson dbus-x11 rtkit fonts-liberation libu2f-udev xdg-utils unzip cargo cmake \
-    && ldconfig      
-
-RUN apt-get install -y libva-dev libv4l-dev
 
 # Install libva and VA-API driver
 RUN apt-get update && apt-get install -y libva2 vainfo \
     && apt-get install -y libva-drm2 libva-x11-2 i965-va-driver vainfo \
     && apt-get install -y mesa-va-drivers gawk jq
 
-# Install Flatpak and add the Flathub repository
-RUN apt-get update && apt-get install -y flatpak \
-    && flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+# Install PipeWire and audio/video dependencies
+RUN apt-get install -y \
+    pipewire \
+    pipewire-audio-client-libraries \
+    pipewire-pulse \
+    pipewire-alsa \
+    pipewire-jack \
+    wireplumber \
+    libpipewire-0.3-0 \
+    libpipewire-0.3-dev \
+    libspa-0.2-modules \
+    pulseaudio-utils \
+    alsa-utils \
+    gstreamer1.0-pipewire \
+    libgstreamer1.0-0 \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-libav \
+    ffmpeg \
+    v4l-utils
 
-# Install Chromium
-#RUN flatpak install -y flathub org.chromium.Chromium
+# Configure PipeWire to replace PulseAudio (without systemctl)
+RUN mkdir -p /etc/pipewire/pipewire.conf.d \
+    && echo 'context.exec = [ { path = "pactl" args = "info" } ]' > /etc/pipewire/pipewire.conf.d/10-gsettings.conf
 
-# Install Vesktop from Flathub
-RUN flatpak install -y flathub dev.vencord.Vesktop
+# Install Discord from package
+RUN wget -O discord.deb "https://discord.com/api/download?platform=linux&format=deb" \
+    && apt-get install -y ./discord.deb \
+    && rm discord.deb
 
-# Install Discord from Flathub
-RUN flatpak install -y flathub com.discordapp.Discord
+# Install Vesktop from package
+RUN wget -O vesktop.deb "https://github.com/Vencord/Vesktop/releases/download/v1.5.5/vesktop_1.5.5_amd64.deb" \
+    && apt-get install -y ./vesktop.deb \
+    && rm vesktop.deb
 
-# Install VLC from Flathub
-RUN flatpak install -y flathub org.videolan.VLC
+# Install VLC from package
+RUN apt-get install -y vlc
 
 # Install Firefox from tarball
 RUN apt-get update \
-    && wget -O firefox.tar.bz2 "https://download.mozilla.org/?product=firefox-latest&os=linux64" \
-    && tar xjf firefox.tar.bz2 -C /opt \
+    && wget -O firefox.tar.xz "https://download.mozilla.org/?product=firefox-latest-ssl&os=linux&lang=en-US" \
+    && tar -xJf firefox.tar.xz -C /opt \
     && ln -s /opt/firefox/firefox /usr/bin/firefox \
-    && rm firefox.tar.bz2
+    && rm firefox.tar.xz
 
 # Copy the icons for Firefox, VLC and Discords to Ubuntu-Mono-Dark icons theme
 COPY /icons/firefox.png /usr/share/icons/ubuntu-mono-dark/apps/48/firefox.png
@@ -73,19 +100,19 @@ RUN wget https://github.com/SpacingBat3/WebCord/releases/download/v4.10.3/webcor
 RUN mkdir -p /home/kasm-user/Desktop/
 
 # Create desktop shortcuts for Firefox, VLC, Vesktop, WebCord, and Discord
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=Vesktop\nComment=Flatpak Vesktop\nExec=/usr/bin/flatpak run --branch=stable --arch=x86_64 dev.vencord.Vesktop "$@"\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=AudioVideo;\n' > $HOME/Desktop/vesktop.desktop \
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Vesktop\nComment=Vencord Vesktop\nExec=/usr/bin/vesktop\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=AudioVideo;\n' > $HOME/Desktop/vesktop.desktop \
     && chmod +x $HOME/Desktop/vesktop.desktop
 
 RUN echo '[Desktop Entry]\nVersion=1.0\nName=Firefox\nComment=Mozilla Firefox\nExec=/opt/firefox/firefox\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/firefox.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/firefox.desktop \
     && chmod +x $HOME/Desktop/firefox.desktop
 
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord\nComment=Discord\nExec=/var/lib/flatpak/app/com.discordapp.Discord/current/active/export/bin/com.discordapp.Discord\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/discord.desktop \
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord\nComment=Discord\nExec=/usr/bin/discord\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/discord.desktop \
     && chmod +x $HOME/Desktop/discord.desktop
 
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=VLC Media Player\nComment=Multimedia player\nExec=flatpak run org.videolan.VLC\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/vlc.png\nType=Application\nCategories=AudioVideo;Player;\n' > $HOME/Desktop/vlc.desktop \
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=VLC Media Player\nComment=Multimedia player\nExec=/usr/bin/vlc\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/vlc.png\nType=Application\nCategories=AudioVideo;Player;\n' > $HOME/Desktop/vlc.desktop \
     && chmod +x $HOME/Desktop/vlc.desktop
 
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=WebCord\nComment=WebCord Client\nExec=webcord\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/webcord.desktop \
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=WebCord\nComment=WebCord Client\nExec=webcord --no-sandbox\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/webcord.desktop \
     && chmod +x $HOME/Desktop/webcord.desktop
 
 # Set Firefox as the default web browser
@@ -99,46 +126,49 @@ RUN mkdir -p /home/kasm-user/Downloads/ \
 # Copy the default profile to the home directory
 RUN cp -rp /home/kasm-default-profile/. /home/kasm-user/ --no-preserve=mode
 
-# https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.0.4/pipewire-1.0.4.tar
-ARG PW_VERSION=1.0.4
-ENV PW_ARCHIVE_URL="https://gitlab.freedesktop.org/pipewire/pipewire/-/archive"
-ENV PW_TAR_FILE="pipewire-${PW_VERSION}.tar"
-ENV PW_TAR_URL="${PW_ARCHIVE_URL}/${PW_VERSION}/${PW_TAR_FILE}"
-
-ENV BUILD_DIR_BASE="/root"
-ENV BUILD_DIR="${BUILD_DIR_BASE}/build-$PW_VERSION"
-
-RUN curl -LJO $PW_TAR_URL \
-    && tar -C $BUILD_DIR_BASE -xvf $PW_TAR_FILE
-
-RUN cd $BUILD_DIR_BASE/pipewire-${PW_VERSION} \
-    && meson setup $BUILD_DIR \
-    && meson configure $BUILD_DIR -Dprefix=/usr \
-    && meson compile -C $BUILD_DIR \
-    && meson install -C $BUILD_DIR
-
-# Clone and install pipewire-screenaudio
-RUN git clone https://github.com/IceDBorn/pipewire-screenaudio.git \
-    && cd pipewire-screenaudio \
-    && bash install.sh
-
 # Cleanup
 RUN apt-get autoclean \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/* \
-    && rm -rf /home/kasm-default-profile/pipewire-1.0.4.tar \
     && chmod -R 755 /home/kasm-default-profile
 
 COPY ./vnc_startup.sh $STARTUPDIR/vnc_startup.sh
 
 # Userspace Runtime
+# Userspace Runtime
 ENV HOME /home/kasm-user
+WORKDIR $HOME
+
+RUN mkdir -p $HOME && chown -R 1000:0 $HOME
+RUN mkdir -p /run/user/1000 /tmp/runtime-kasm-user && chown -R 1000:0 /run/user/1000 /tmp/runtime-kasm-user
 
 # Set environment variables
-ENV XDG_DATA_DIRS=/app/data:/usr/local/share:/usr/share:/var/lib/flatpak/exports/share:/home/kasm-user/.local/share/flatpak/exports/share
+ENV XDG_DATA_DIRS=/app/data:/usr/local/share:/usr/share
 
-WORKDIR $HOME
-RUN mkdir -p $HOME && chown -R 1000:0 $HOME
+#ENV DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
+ENV XDG_RUNTIME_DIR="/tmp/runtime-kasm-user"
+
+# PipeWire environment variables
+ENV PULSE_RUNTIME_PATH="/tmp/runtime-kasm-user/pulse"
+ENV PIPEWIRE_RUNTIME_DIR="/tmp/runtime-kasm-user"
+ENV PIPEWIRE_LATENCY="512/48000"
+
+# Enable PipeWire by default and set additional audio environment variables
+ENV START_PIPEWIRE=1
+ENV PULSE_SERVER="unix:/tmp/runtime-kasm-user/pulse/native"
+ENV PIPEWIRE_DEBUG=3
+ENV SPA_PLUGIN_DIR="/usr/lib/x86_64-linux-gnu/spa-0.2"
+ENV PIPEWIRE_MODULE_DIR="/usr/lib/x86_64-linux-gnu/pipewire-0.3"
+
+# Create PipeWire configuration directories
+RUN mkdir -p /home/kasm-user/.config/pipewire \
+    && mkdir -p /home/kasm-user/.config/wireplumber \
+    && mkdir -p /home/kasm-default-profile/.config/pipewire \
+    && mkdir -p /home/kasm-default-profile/.config/wireplumber \
+    && mkdir -p /tmp/runtime-kasm-user/pulse \
+    && chown -R 1000:0 /home/kasm-user/.config \
+    && chown -R 1000:0 /home/kasm-default-profile/.config \
+    && chown -R 1000:0 /tmp/runtime-kasm-user/pulse
 
 # Set executable permission and allow launching for desktop files
 RUN chmod +x /home/kasm-user/Desktop/*.desktop \
@@ -151,4 +181,15 @@ RUN cp /home/kasm-user/Downloads/pipewire-screenaudio.xpi /home/kasm-default-pro
 RUN mkdir -p /run/dbus && chown -R 1000:0 /run/dbus
 RUN mkdir -p /dev/snd && chown -R 1000:0 /dev/snd
 RUN $STARTUPDIR/set_user_permission.sh $HOME
+
+# Create Firefox policies directory and add configuration for screen sharing
+RUN mkdir -p /opt/firefox/distribution \
+    && echo '{\n  "policies": {\n    "Permissions": {\n      "Camera": {\n        "Allow": ["https://*", "http://*"]\n      },\n      "Microphone": {\n        "Allow": ["https://*", "http://*"]\n      }\n    },\n    "Preferences": {\n      "media.navigator.mediadatadecoder_vpx_enabled": true,\n      "media.peerconnection.enabled": true,\n      "media.getusermedia.screensharing.enabled": true,\n      "media.getusermedia.browser.enabled": true,\n      "media.getusermedia.audiocapture.enabled": true,\n      "media.navigator.permission.disabled": true\n    }\n  }\n}' > /opt/firefox/distribution/policies.json
+
+# Create Firefox user preferences for pipewire support
+RUN mkdir -p /home/kasm-user/.mozilla/firefox \
+    && mkdir -p /home/kasm-default-profile/.mozilla/firefox \
+    && echo 'user_pref("media.cubeb.backend", "pipewire");\nuser_pref("media.cubeb.sandbox", false);\nuser_pref("media.getusermedia.screensharing.enabled", true);\nuser_pref("media.getusermedia.browser.enabled", true);\nuser_pref("media.getusermedia.audiocapture.enabled", true);\nuser_pref("media.navigator.permission.disabled", true);\nuser_pref("media.autoplay.default", 0);' > /home/kasm-user/.mozilla/firefox/user.js \
+    && cp /home/kasm-user/.mozilla/firefox/user.js /home/kasm-default-profile/.mozilla/firefox/user.js
+
 USER 1000

@@ -22,6 +22,15 @@ ENV DEBIAN_FRONTEND=noninteractive \
                   /ubuntu/install/vs_code/install_vs_code.sh \
                   /ubuntu/install/gamepad_utils/install_gamepad_utils.sh \
                   /ubuntu/install/cleanup/cleanup.sh"
+
+# Copy install scripts
+COPY ./src/ $INST_DIR
+
+# Run standard installations
+RUN \
+  for SCRIPT in $INST_SCRIPTS; do \
+    bash ${INST_DIR}${SCRIPT} || exit 1; \
+  done
            
 ######### Customize Container Here ###########
 
@@ -70,26 +79,18 @@ RUN wget -O vesktop.deb "https://github.com/Vencord/Vesktop/releases/download/v1
 # Install VLC from package
 RUN apt-get install -y vlc
 
-# Install Firefox from tarball
-RUN apt-get update \
-    && wget -O firefox.tar.xz "https://download.mozilla.org/?product=firefox-latest-ssl&os=linux&lang=en-US" \
-    && tar -xJf firefox.tar.xz -C /opt \
-    && ln -s /opt/firefox/firefox /usr/bin/firefox \
-    && rm firefox.tar.xz
-
-# Copy the icons for Firefox, VLC and Discords to Ubuntu-Mono-Dark icons theme
+# Copy the icons for VLC and Discords to Ubuntu-Mono-Dark icons theme
 COPY /icons/firefox.png /usr/share/icons/ubuntu-mono-dark/apps/48/firefox.png
 COPY /icons/discord.png /usr/share/icons/ubuntu-mono-dark/apps/48/discord.png
 COPY /icons/vlc.png /usr/share/icons/ubuntu-mono-dark/apps/48/vlc.png
-# Copy the icons for Firefox, VLC and Discords to Ubuntu-Mono-Light icons theme
+# Copy the icons for VLC and Discords to Ubuntu-Mono-Light icons theme
 COPY /icons/firefox.png /usr/share/icons/ubuntu-mono-light/apps/48/firefox.png
 COPY /icons/discord.png /usr/share/icons/ubuntu-mono-light/apps/48/discord.png
 COPY /icons/vlc.png /usr/share/icons/ubuntu-mono-light/apps/48/vlc.png
-# Copy the icons for Firefox, VLC and Discords to the appropriate locations for HiColor icons theme
+# Copy the icons for VLC and Discords to the appropriate locations for HiColor icons theme
 COPY /icons/firefox.png /usr/share/icons/hicolor/48x48/apps/firefox.png
 COPY /icons/discord.png /usr/share/icons/hicolor/48x48/apps/discord.png
 COPY /icons/vlc.png /usr/share/icons/hicolor/48x48/apps/vlc.png
-#COPY ./icons/chromium.png /usr/share/icons/ubuntu-mono-dark/apps/48/
 
 # Download and install WebCord .deb package
 RUN wget https://github.com/SpacingBat3/WebCord/releases/download/v4.10.3/webcord_4.10.3_amd64.deb \
@@ -99,12 +100,9 @@ RUN wget https://github.com/SpacingBat3/WebCord/releases/download/v4.10.3/webcor
 # Create Desktop directory for kasm-user
 RUN mkdir -p /home/kasm-user/Desktop/
 
-# Create desktop shortcuts for Firefox, VLC, Vesktop, WebCord, and Discord
+# Create desktop shortcuts for VLC, Vesktop, WebCord, and Discord (Firefox desktop shortcut is created by install script)
 RUN echo '[Desktop Entry]\nVersion=1.0\nName=Vesktop\nComment=Vencord Vesktop\nExec=/usr/bin/vesktop\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=AudioVideo;\n' > $HOME/Desktop/vesktop.desktop \
     && chmod +x $HOME/Desktop/vesktop.desktop
-
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=Firefox\nComment=Mozilla Firefox\nExec=/opt/firefox/firefox\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/firefox.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/firefox.desktop \
-    && chmod +x $HOME/Desktop/firefox.desktop
 
 RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord\nComment=Discord\nExec=/usr/bin/discord\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/discord.desktop \
     && chmod +x $HOME/Desktop/discord.desktop
@@ -114,10 +112,6 @@ RUN echo '[Desktop Entry]\nVersion=1.0\nName=VLC Media Player\nComment=Multimedi
 
 RUN echo '[Desktop Entry]\nVersion=1.0\nName=WebCord\nComment=WebCord Client\nExec=webcord --no-sandbox\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/webcord.desktop \
     && chmod +x $HOME/Desktop/webcord.desktop
-
-# Set Firefox as the default web browser
-RUN update-alternatives --install /usr/bin/x-www-browser x-www-browser /opt/firefox/firefox 200 \
-    && update-alternatives --install /usr/bin/gnome-www-browser gnome-www-browser /opt/firefox/firefox 200
 
 # Create Downloads directory for kasm-user
 RUN mkdir -p /home/kasm-user/Downloads/ \
@@ -130,7 +124,8 @@ RUN cp -rp /home/kasm-default-profile/. /home/kasm-user/ --no-preserve=mode
 RUN apt-get autoclean \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* /var/tmp/* /tmp/* \
-    && chmod -R 755 /home/kasm-default-profile
+    && chmod -R 755 /home/kasm-default-profile \
+    && rm -rf $INST_DIR
 
 COPY ./vnc_startup.sh $STARTUPDIR/vnc_startup.sh
 
@@ -183,8 +178,8 @@ RUN mkdir -p /dev/snd && chown -R 1000:0 /dev/snd
 RUN $STARTUPDIR/set_user_permission.sh $HOME
 
 # Create Firefox policies directory and add configuration for screen sharing
-RUN mkdir -p /opt/firefox/distribution \
-    && echo '{\n  "policies": {\n    "Permissions": {\n      "Camera": {\n        "Allow": ["https://*", "http://*"]\n      },\n      "Microphone": {\n        "Allow": ["https://*", "http://*"]\n      }\n    },\n    "Preferences": {\n      "media.navigator.mediadatadecoder_vpx_enabled": true,\n      "media.peerconnection.enabled": true,\n      "media.getusermedia.screensharing.enabled": true,\n      "media.getusermedia.browser.enabled": true,\n      "media.getusermedia.audiocapture.enabled": true,\n      "media.navigator.permission.disabled": true\n    }\n  }\n}' > /opt/firefox/distribution/policies.json
+RUN mkdir -p /usr/lib/firefox/distribution \
+    && echo '{\n  "policies": {\n    "Permissions": {\n      "Camera": {\n        "Allow": ["https://*", "http://*"]\n      },\n      "Microphone": {\n        "Allow": ["https://*", "http://*"]\n      }\n    },\n    "Preferences": {\n      "media.navigator.mediadatadecoder_vpx_enabled": true,\n      "media.peerconnection.enabled": true,\n      "media.getusermedia.screensharing.enabled": true,\n      "media.getusermedia.browser.enabled": true,\n      "media.getusermedia.audiocapture.enabled": true,\n      "media.navigator.permission.disabled": true\n    }\n  }\n}' > /usr/lib/firefox/distribution/policies.json
 
 # Create Firefox user preferences for pipewire support
 RUN mkdir -p /home/kasm-user/.mozilla/firefox \

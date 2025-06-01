@@ -47,10 +47,11 @@ export PULSE_RUNTIME_DIR=/tmp
 dbus-daemon --system --fork
 
 # startup/30_pipewire.sh
-pipewire &
-wireplumber &
-pipewire-pulse &
-PIPEWIRE_LATENCY=2000/44100 pipewire no_proxy=127.0.0.1 ffmpeg -v verbose -f pipewire -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio > /dev/null 2>&1 &
+# Commented out early PipeWire startup to avoid conflicts - will be started by start_audio_out function
+# pipewire &
+# wireplumber &
+# pipewire-pulse &
+# PIPEWIRE_LATENCY=2000/44100 pipewire no_proxy=127.0.0.1 ffmpeg -v verbose -f pipewire -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio > /dev/null 2>&1 &
 
 STARTUP_COMPLETE=0
 
@@ -156,9 +157,9 @@ function start_kasmvnc (){
 	fi
 
 	if [[ "${BUILD_ARCH}" =~ ^aarch64$ ]] && [[ -f /lib/aarch64-linux-gnu/libgcc_s.so.1 ]] ; then
-		LD_PRELOAD=/lib/aarch64-linux-gnu/libgcc_s.so.1 vncserver $DISPLAY $KASMVNC_HW3D -drinode $DRINODE -depth $VNC_COL_DEPTH -geometry $VNC_RESOLUTION -websocketPort $NO_VNC_PORT -httpd ${KASM_VNC_PATH}/www -sslOnly -FrameRate=$MAX_FRAME_RATE -interface 0.0.0.0 -BlacklistThreshold=0 -FreeKeyMappings $VNCOPTIONS $KASM_SVC_SEND_CUT_TEXT $KASM_SVC_ACCEPT_CUT_TEXT
+		LD_PRELOAD=/lib/aarch64-linux-gnu/libgcc_s.so.1 vncserver $DISPLAY $KASMVNC_HW3D -drinode $DRINODE -depth $VNC_COL_DEPTH -geometry $VNC_RESOLUTION -websocketPort $NO_VNC_PORT -httpd ${KASM_VNC_PATH}/www -FrameRate=$MAX_FRAME_RATE -interface 0.0.0.0 -BlacklistThreshold=0 -FreeKeyMappings $VNCOPTIONS $KASM_SVC_SEND_CUT_TEXT $KASM_SVC_ACCEPT_CUT_TEXT
 	else
-		vncserver $DISPLAY $KASMVNC_HW3D -drinode $DRINODE -depth $VNC_COL_DEPTH -geometry $VNC_RESOLUTION -websocketPort $NO_VNC_PORT -httpd ${KASM_VNC_PATH}/www -sslOnly -FrameRate=$MAX_FRAME_RATE -interface 0.0.0.0 -BlacklistThreshold=0 -FreeKeyMappings $VNCOPTIONS $KASM_SVC_SEND_CUT_TEXT $KASM_SVC_ACCEPT_CUT_TEXT
+		vncserver $DISPLAY $KASMVNC_HW3D -drinode $DRINODE -depth $VNC_COL_DEPTH -geometry $VNC_RESOLUTION -websocketPort $NO_VNC_PORT -httpd ${KASM_VNC_PATH}/www -FrameRate=$MAX_FRAME_RATE -interface 0.0.0.0 -BlacklistThreshold=0 -FreeKeyMappings $VNCOPTIONS $KASM_SVC_SEND_CUT_TEXT $KASM_SVC_ACCEPT_CUT_TEXT
 	fi
 
 	KASM_PROCS['kasmvnc']=$(cat $HOME/.vnc/*${DISPLAY_NUM}.pid)
@@ -220,22 +221,93 @@ function start_audio_out (){
 
         if [ "${START_PIPEWIRE:-0}" == "1" ] ;
         then
-            echo "Starting PipeWire"
-			pipewire &
-			wireplumber &
-			pipewire-pulse &
+            # Check if PipeWire processes are already running
+            if ! pgrep -x "pipewire" > /dev/null; then
+                echo "Starting PipeWire"
+                pipewire &
+            else
+                echo "PipeWire already running"
+            fi
+            
+            if ! pgrep -x "wireplumber" > /dev/null; then
+                echo "Starting WirePlumber"
+                wireplumber &
+            else
+                echo "WirePlumber already running"
+            fi
+            
+            if ! pgrep -x "pipewire-pulse" > /dev/null; then
+                echo "Starting PipeWire-Pulse"
+                pipewire-pulse &
+            else
+                echo "PipeWire-Pulse already running"
+            fi
         fi
 
 		if [[ $DEBUG == true ]]; then
-			echo 'Starting audio service in debug mode'
-			PIPEWIRE_LATENCY=2000/44100 pipewire no_proxy=127.0.0.1 ffmpeg -f pipewire -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio &
-			KASM_PROCS['kasm_audio_out']=$!
+			echo 'Starting audio service'
+			# Check if ffmpeg audio streaming is already running
+			if ! pgrep -f "ffmpeg.*kasmaudio" > /dev/null; then
+				echo "Starting ffmpeg audio streaming..."
+				PIPEWIRE_LATENCY=2000/44100 no_proxy=127.0.0.1 ffmpeg -v verbose -f pulse -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio &
+				KASM_PROCS['kasm_audio_out']=$!
+				echo -e "\n------------------ Started Audio Out  ----------------------------"
+				echo "Kasm Audio Out PID: ${KASM_PROCS['kasm_audio_out']}";
+				# Give it a moment to start and check if it's still running
+				sleep 1
+				if kill -0 "${KASM_PROCS['kasm_audio_out']}" 2>/dev/null; then
+					echo "Audio streaming process is running successfully"
+				else
+					echo "WARNING: Audio streaming process died immediately after start"
+				fi
+			else
+				echo "Audio streaming already running"
+				# Get the PID of the existing ffmpeg process
+				EXISTING_PID=$(pgrep -f "ffmpeg.*kasmaudio" | head -1)
+				if [[ -n "$EXISTING_PID" ]]; then
+					KASM_PROCS['kasm_audio_out']=$EXISTING_PID
+					echo -e "\n------------------ Audio Out Already Running  ----------------------------"
+					echo "Kasm Audio Out PID: ${KASM_PROCS['kasm_audio_out']}";
+				else
+					echo "Warning: Could not find existing ffmpeg PID, starting new process"
+					PIPEWIRE_LATENCY=2000/44100 no_proxy=127.0.0.1 ffmpeg -v verbose -f pulse -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio &
+					KASM_PROCS['kasm_audio_out']=$!
+					echo -e "\n------------------ Started Audio Out  ----------------------------"
+					echo "Kasm Audio Out PID: ${KASM_PROCS['kasm_audio_out']}";
+				fi
+			fi
 		else
 			echo 'Starting audio service'
-			#PIPEWIRE_LATENCY=2000/44100 pipewire no_proxy=127.0.0.1 ffmpeg -v verbose -f pipewire -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio > /dev/null 2>&1 &
-			KASM_PROCS['kasm_audio_out']=$!
-			echo -e "\n------------------ Started Audio Out  ----------------------------"
-			echo "Kasm Audio Out PID: ${KASM_PROCS['kasm_audio_out']}";
+			# Check if ffmpeg audio streaming is already running
+			if ! pgrep -f "ffmpeg.*kasmaudio" > /dev/null; then
+				echo "Starting ffmpeg audio streaming..."
+				PIPEWIRE_LATENCY=2000/44100 no_proxy=127.0.0.1 ffmpeg -v verbose -f pulse -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio &
+				KASM_PROCS['kasm_audio_out']=$!
+				echo -e "\n------------------ Started Audio Out  ----------------------------"
+				echo "Kasm Audio Out PID: ${KASM_PROCS['kasm_audio_out']}";
+				# Give it a moment to start and check if it's still running
+				sleep 1
+				if kill -0 "${KASM_PROCS['kasm_audio_out']}" 2>/dev/null; then
+					echo "Audio streaming process is running successfully"
+				else
+					echo "WARNING: Audio streaming process died immediately after start"
+				fi
+			else
+				echo "Audio streaming already running"
+				# Get the PID of the existing ffmpeg process
+				EXISTING_PID=$(pgrep -f "ffmpeg.*kasmaudio" | head -1)
+				if [[ -n "$EXISTING_PID" ]]; then
+					KASM_PROCS['kasm_audio_out']=$EXISTING_PID
+					echo -e "\n------------------ Audio Out Already Running  ----------------------------"
+					echo "Kasm Audio Out PID: ${KASM_PROCS['kasm_audio_out']}";
+				else
+					echo "Warning: Could not find existing ffmpeg PID, starting new process"
+					PIPEWIRE_LATENCY=2000/44100 no_proxy=127.0.0.1 ffmpeg -v verbose -f pulse -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio &
+					KASM_PROCS['kasm_audio_out']=$!
+					echo -e "\n------------------ Started Audio Out  ----------------------------"
+					echo "Kasm Audio Out PID: ${KASM_PROCS['kasm_audio_out']}";
+				fi
+			fi
 		fi
 	fi
 }
@@ -418,7 +490,13 @@ sleep 3
 while :
 do
 	for process in "${!KASM_PROCS[@]}"; do
-		if ! kill -0 "${KASM_PROCS[$process]}" ; then
+		# Skip if PID is empty or invalid
+		if [[ -z "${KASM_PROCS[$process]}" ]] || [[ ! "${KASM_PROCS[$process]}" =~ ^[0-9]+$ ]]; then
+			echo "Invalid PID for $process: ${KASM_PROCS[$process]}, skipping check"
+			continue
+		fi
+		
+		if ! kill -0 "${KASM_PROCS[$process]}" 2>/dev/null ; then
 
 			# If DLP Policy is set to fail secure, default is to be resilient
 			if [[ ${DLP_PROCESS_FAIL_SECURE:-0} == 1 ]]; then
@@ -430,6 +508,7 @@ do
 					if [ "$KASMVNC_AUTO_RECOVER" = true ] ; then
 						echo "KasmVNC crashed, restarting"
 						start_kasmvnc
+						sleep 2
 					else
 						echo "KasmVNC crashed, exiting container"
 						exit 1
@@ -438,14 +517,32 @@ do
 				window_manager)
 					echo "Window manager crashed, restarting"
 					start_window_manager
+					sleep 2
 					;;
 				kasm_audio_out_websocket)
 					echo "Restarting Audio Out Websocket Service"
 					start_audio_out_websocket
+					sleep 1
 					;;
 				kasm_audio_out)
 					echo "Restarting Audio Out Service"
-					start_audio_out
+					# First check if ffmpeg is actually still running
+					if pgrep -f "ffmpeg.*kasmaudio" > /dev/null; then
+						echo "Audio streaming process is still running, updating PID"
+						EXISTING_PID=$(pgrep -f "ffmpeg.*kasmaudio" | head -1)
+						if [[ -n "$EXISTING_PID" ]]; then
+							KASM_PROCS['kasm_audio_out']=$EXISTING_PID
+							echo "Updated Audio Out PID: ${KASM_PROCS['kasm_audio_out']}"
+						else
+							echo "Could not get valid PID, restarting service"
+							start_audio_out
+							sleep 2
+						fi
+					else
+						echo "Audio streaming process not found, restarting"
+						start_audio_out
+						sleep 2
+					fi
 					;;
 				kasm_audio_in)
 					echo "Audio In Service Failed"
@@ -456,6 +553,7 @@ do
 					echo "Restarting Upload Service"
 					# TODO: This will only work if both processes are killed, requires more work
 					start_upload
+					sleep 1
 					;;
                                 kasm_gamepad)
 					echo "Gamepad Service Failed"
@@ -466,16 +564,19 @@ do
 					echo "Webcam Service Failed"
 					# TODO: Needs work in python project to support auto restart
 					start_webcam
+					sleep 1
 					;;
 				kasm_printer)
 					echo "Printer Service Failed"
 					# TODO: Needs work in python project to support auto restart
 					start_printer
+					sleep 1
 					;;
 				custom_script)
 					echo "The custom startup script exited."
 					# custom startup scripts track the target process on their own, they should not exit
 					custom_startup
+					sleep 1
 					;;
 				*)
 					echo "Unknown Service: $process"

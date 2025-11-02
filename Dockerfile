@@ -79,6 +79,20 @@ RUN wget -O vesktop.deb "https://github.com/Vencord/Vesktop/releases/download/v1
 # Install VLC from package
 RUN apt-get install -y vlc
 
+# Install Python and pip for Discord Rich Presence Plex
+RUN apt-get install -y python3 python3-pip python3-venv git
+
+# Install Discord Rich Presence Plex dependencies first
+RUN pip3 install --no-cache-dir --break-system-packages --ignore-installed \
+    PlexAPI==4.17.1 \
+    requests==2.32.5 \
+    websocket-client==1.8.0 \
+    PyYAML==6.0.2 \
+    pillow==11.3.0
+
+# Install Discord Rich Presence Plex from GitHub
+RUN git clone https://github.com/phin05/discord-rich-presence-plex.git /opt/discord-rich-presence-plex
+
 # Copy the icons for VLC and Discords to Ubuntu-Mono-Dark icons theme
 COPY /icons/firefox.png /usr/share/icons/ubuntu-mono-dark/apps/48/firefox.png
 COPY /icons/discord.png /usr/share/icons/ubuntu-mono-dark/apps/48/discord.png
@@ -128,6 +142,10 @@ RUN apt-get autoclean \
     && rm -rf $INST_DIR
 
 COPY ./vnc_startup.sh $STARTUPDIR/vnc_startup.sh
+COPY ./drpp_startup.sh $STARTUPDIR/drpp_startup.sh
+COPY ./drpp_config_template.yaml $STARTUPDIR/drpp_config_template.yaml
+
+RUN chmod +x $STARTUPDIR/drpp_startup.sh
 
 # Userspace Runtime
 # Userspace Runtime

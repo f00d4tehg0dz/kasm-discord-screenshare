@@ -396,6 +396,38 @@ function start_printer (){
 # 	echo "Firefox" | /home/kasm-default-profile/virtmic
 # }
 
+function start_discord_rich_presence (){
+	if [[ ${KASM_SVC_DISCORD_RPC:-1} == 1 ]]; then
+		echo 'Starting Discord Rich Presence for Plex'
+
+		# Check if Discord RPC is already running
+		if ! pgrep -f "discord-rich-presence-plex" > /dev/null; then
+			# Create DRPP config directory if it doesn't exist
+			mkdir -p $HOME/.config/discord-rich-presence-plex
+
+			# Source DRPP environment if it exists
+			if [ -f "$HOME/.config/discord-rich-presence-plex/env" ]; then
+				source "$HOME/.config/discord-rich-presence-plex/env"
+			fi
+
+			# Start DRPP in background
+			python3 /opt/discord-rich-presence-plex/main.py &
+			KASM_PROCS['discord_rpc']=$!
+
+			if [[ $DEBUG == true ]]; then
+				echo -e "\n------------------ Started Discord Rich Presence for Plex  ----------------------------"
+				echo "Discord RPC PID: ${KASM_PROCS['discord_rpc']}";
+			fi
+		else
+			echo "Discord Rich Presence already running"
+			EXISTING_PID=$(pgrep -f "discord-rich-presence-plex" | head -1)
+			if [[ -n "$EXISTING_PID" ]]; then
+				KASM_PROCS['discord_rpc']=$EXISTING_PID
+			fi
+		fi
+	fi
+}
+
 function custom_startup (){
 	custom_startup_script=/dockerstartup/custom_startup.sh
 	if [ -f "$custom_startup_script" ]; then
@@ -468,6 +500,7 @@ start_gamepad
 profile_size_check &
 start_webcam
 start_printer
+start_discord_rich_presence
 
 
 STARTUP_COMPLETE=1
@@ -571,6 +604,11 @@ do
 					# TODO: Needs work in python project to support auto restart
 					start_printer
 					sleep 1
+					;;
+				discord_rpc)
+					echo "Discord Rich Presence Service Failed, restarting"
+					start_discord_rich_presence
+					sleep 2
 					;;
 				custom_script)
 					echo "The custom startup script exited."

@@ -1,0 +1,12 @@
+/src/alpine
+/src/common
+/src/kasmos
+/src/opensuse
+/src/oracle
+/src/ubuntu
+/src/ubuntu
+/workspaces-images
+Dockerfilebak
+/.history
+.env
+config.yaml

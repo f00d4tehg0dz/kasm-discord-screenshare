@@ -7,9 +7,9 @@ CHROME_ARGS="--password-store=basic --no-sandbox --ignore-gpu-blocklist --user-d
 apt-get update
 apt install -y  apt-transport-https curl
 
-curl -s https://brave-browser-apt-release.s3.brave.com/brave-core.asc |  apt-key --keyring /etc/apt/trusted.gpg.d/brave-browser-release.gpg add -
+curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
 
-echo "deb [arch=${ARCH}] https://brave-browser-apt-release.s3.brave.com/ stable main" |  tee /etc/apt/sources.list.d/brave-browser-release.list
+echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main"| tee /etc/apt/sources.list.d/brave-browser-release.list
 
 apt update
 
@@ -19,6 +19,7 @@ sed -i 's/-stable//g' /usr/share/applications/brave-browser.desktop
 
 cp /usr/share/applications/brave-browser.desktop $HOME/Desktop/
 chown 1000:1000 $HOME/Desktop/brave-browser.desktop
+chmod +x $HOME/Desktop/brave-browser.desktop
 
 mv /usr/bin/brave-browser /usr/bin/brave-browser-orig
 cat >/usr/bin/brave-browser <<EOL
@@ -41,11 +42,12 @@ cat >>/usr/bin/x-www-browser <<EOL
 exec -a "\$0" "\$HERE/brave" "${CHROME_ARGS}"  "\$@"
 EOL
 
-mkdir -p /etc/brave/policies/managed/
 # Vanilla Chrome looks for policies in /etc/opt/chrome/policies/managed which is used by web filtering.
 #   Create a symlink here so filter is applied to brave as well.
 mkdir -p /etc/opt/chrome/policies/
-ln -s /etc/brave/policies/managed /etc/opt/chrome/policies/
+mkdir -p /etc/brave
+ln -s /etc/opt/chrome/policies /etc/brave/policies
+mkdir -p /etc/brave/policies/managed/ 
 cat >>/etc/brave/policies/managed/default_managed_policy.json <<EOL
 {"CommandLineFlagSecurityWarningsEnabled": false, "DefaultBrowserSettingEnabled": false}
 EOL
@@ -60,3 +62,7 @@ if [ -z ${SKIP_CLEAN+x} ]; then
     /var/lib/apt/lists/* \
     /var/tmp/*
 fi
+
+# Cleanup for app layer
+chown -R 1000:0 $HOME
+find /usr/share/ -name "icon-theme.cache" -exec rm -f {} \;

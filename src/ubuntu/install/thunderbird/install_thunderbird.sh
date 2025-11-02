@@ -2,17 +2,10 @@
 set -ex
 
 # Install
-if [[ "${DISTRO}" == @(centos|oracle8|rockylinux9|rockylinux8|oracle9|almalinux9|almalinux8|fedora37|fedora38) ]]; then
-  if [[ "${DISTRO}" == @(oracle8|rockylinux9|rockylinux8|oracle9|almalinux9|almalinux8|fedora37|fedora38) ]]; then
-    dnf install -y thunderbird
-    if [ -z ${SKIP_CLEAN+x} ]; then
-      dnf clean all
-    fi
-  else
-    yum install -y thunderbird
-    if [ -z ${SKIP_CLEAN+x} ]; then
-      yum clean all
-    fi
+if [[ "${DISTRO}" == @(oracle8|rockylinux9|rockylinux8|oracle9|rhel9|almalinux9|almalinux8|fedora39|fedora40) ]]; then
+  dnf install -y thunderbird
+  if [ -z ${SKIP_CLEAN+x} ]; then
+    dnf clean all
   fi
 elif [ "${DISTRO}" == "opensuse" ]; then
   zypper install -yn MozillaThunderbird
@@ -48,10 +41,20 @@ Pin-Priority: 1001
 fi
 
 # Desktop icon
-if [[ "${DISTRO}" == @(fedora37|fedora38) ]]; then
+if [[ "${DISTRO}" == "fedora39" ]]; then
   cp /usr/share/applications/mozilla-thunderbird.desktop $HOME/Desktop/
   chmod +x $HOME/Desktop/mozilla-thunderbird.desktop
+elif [[ "${DISTRO}" == "fedora40" ]]; then
+  cp /usr/share/applications/org.mozilla.thunderbird.desktop $HOME/Desktop/
+  chmod +x $HOME/Desktop/org.mozilla.thunderbird.desktop
+elif [[ "${DISTRO}" == "opensuse" ]]; then
+  cp /usr/share/applications/thunderbird-esr.desktop $HOME/Desktop/
+  chmod +x $HOME/Desktop/thunderbird-esr.desktop
 else
   cp /usr/share/applications/thunderbird.desktop $HOME/Desktop/
   chmod +x $HOME/Desktop/thunderbird.desktop
 fi
+
+# Cleanup for app layer
+chown -R 1000:0 $HOME
+find /usr/share/ -name "icon-theme.cache" -exec rm -f {} \;

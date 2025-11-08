@@ -487,6 +487,22 @@ echo -e "${VNC_PW}\n${VNC_PW}\n" | kasmvncpasswd -u kasm_user -wo
 echo -e "${VNC_PW}\n${VNC_PW}\n" | kasmvncpasswd -u kasm_viewer -r
 chmod 600 $PASSWD_PATH
 
+# --- FIX AUDIO / START PIPEWIRE EARLY ---
+export XDG_RUNTIME_DIR="/tmp/runtime-kasm-user"
+export PULSE_RUNTIME_PATH="/tmp/runtime-kasm-user/pulse"
+mkdir -p "$PULSE_RUNTIME_PATH"
+
+if ! pgrep -x "pipewire" > /dev/null; then
+    pipewire &
+fi
+if ! pgrep -x "wireplumber" > /dev/null; then
+    wireplumber &
+fi
+if ! pgrep -x "pipewire-pulse" > /dev/null; then
+    pipewire-pulse &
+fi
+
+sleep 1  # allow time to create pulse socket
 
 # start processes
 start_kasmvnc

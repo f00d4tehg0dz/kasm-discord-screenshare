@@ -142,10 +142,6 @@ RUN apt-get autoclean \
     && rm -rf $INST_DIR
 
 COPY ./vnc_startup.sh $STARTUPDIR/vnc_startup.sh
-COPY ./drpp_startup.sh $STARTUPDIR/drpp_startup.sh
-COPY ./drpp_config_template.yaml $STARTUPDIR/drpp_config_template.yaml
-
-RUN chmod +x $STARTUPDIR/drpp_startup.sh
 
 # Userspace Runtime
 # Userspace Runtime

@@ -47,8 +47,33 @@ export PULSE_RUNTIME_DIR=/tmp
 # Clean up stale dbus files and ensure proper directory structure
 rm -rf /run/dbus 2>/dev/null || true
 mkdir -p /run/dbus 2>/dev/null || true
-# Start session bus instead of system bus (doesn't require root)
-dbus-daemon --session --fork 2>/dev/null || echo "DBus initialization failed, continuing without it"
+
+# Start session bus for user (required for Flatpak and PipeWire)
+# Don't start system dbus as it causes permission issues in Docker
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
+mkdir -p /run/user/1000
+chmod 700 /run/user/1000
+if ! [ -S /run/user/1000/bus ]; then
+    echo "Starting DBus session bus..."
+    dbus-daemon --session --address="unix:path=/run/user/1000/bus" --print-address --fork 2>/dev/null || echo "DBus session initialization: $(dbus-daemon --session --address="unix:path=/run/user/1000/bus" --print-address --fork 2>&1)"
+fi
+
+# startup/20_flatpak.sh
+# Initialize Flatpak environment for sandboxed applications (Plex Desktop, etc.)
+echo "Initializing Flatpak environment..."
+
+# Ensure Flatpak directories exist with proper permissions (user-writable directories only)
+mkdir -p /home/kasm-user/.local/share/flatpak 2>/dev/null || true
+mkdir -p /tmp/.flatpak-cache 2>/dev/null || true
+chmod 1777 /tmp/.flatpak-cache 2>/dev/null || true
+
+# Set Flatpak environment variables
+export XDG_DATA_DIRS="/home/kasm-user/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/app/data:/usr/local/share:/usr/share"
+
+# Optional: Try to start user systemd session for enhanced Flatpak support (non-critical)
+if command -v systemd-run &>/dev/null 2>&1; then
+    systemd-run --user --scope --property=KillMode=process true 2>/dev/null || echo "systemd user session not available (expected in Docker)"
+fi
 
 # startup/30_pipewire.sh
 # Commented out early PipeWire startup to avoid conflicts - will be started by start_audio_out function
@@ -151,7 +176,23 @@ function start_kasmvnc (){
 	fi
 
 	rm -rf $HOME/.vnc/*.pid
-	echo "exit 0" > $HOME/.vnc/xstartup
+	# Create xstartup script that properly initializes the desktop
+	cat > $HOME/.vnc/xstartup << 'XSTARTUP'
+#!/bin/bash
+# XVnc startup script
+
+# Set DISPLAY for this script
+export DISPLAY=:1
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
+
+# Start XFCE4 desktop environment
+if [ -x /usr/bin/startxfce4 ]; then
+    /usr/bin/startxfce4 --replace
+else
+    # Fallback to xterm if startxfce4 not available
+    xterm &
+fi
+XSTARTUP
 	chmod +x $HOME/.vnc/xstartup
 
 	VNCOPTIONS="$VNCOPTIONS -select-de manual"
@@ -189,18 +230,10 @@ function start_window_manager (){
 	echo -e "\n------------------ Xfce4 window manager startup------------------"
 
 	if [ "${START_XFCE4}" == "1" ] ; then
-		if [ -f /opt/VirtualGL/bin/vglrun ] && [ ! -z "${KASM_EGL_CARD}" ] && [ ! -z "${KASM_RENDERD}" ] && [ -O "${KASM_RENDERD}" ] && [ -O "${KASM_EGL_CARD}" ] ; then
-		echo "Starting XFCE with VirtualGL using EGL device ${KASM_EGL_CARD}"
-			DISPLAY=:1 /opt/VirtualGL/bin/vglrun -d "${KASM_EGL_CARD}" /usr/bin/startxfce4 --replace > /dev/null 2>&1 &
-		else
-			echo "Starting XFCE"
-			if [ -f '/usr/bin/zypper' ]; then
-				DISPLAY=:1 /usr/bin/dbus-launch /usr/bin/startxfce4 --replace > /dev/null 2>&1 &
-			else
-				/usr/bin/startxfce4 --replace > /dev/null 2>&1 &
-			fi
-		fi
-		KASM_PROCS['window_manager']=$!
+		echo "XFCE4 will be started by VNC xstartup script"
+		# XFCE is now started by the xstartup script for better reliability
+		# Just wait a moment to ensure it initializes
+		sleep 3
 	else
 		echo "Skipping XFCE Startup"
 	fi
@@ -238,30 +271,25 @@ function start_audio_out (){
             export PULSE_RUNTIME_PATH=/tmp/runtime-kasm-user/pulse
             export PULSE_SERVER="unix:${PULSE_RUNTIME_PATH}/native"
 
-            # Check if PipeWire processes are already running
-            if ! pgrep -x "pipewire" > /dev/null; then
-                echo "Starting PipeWire"
-                PIPEWIRE_RUNTIME_DIR=/tmp/runtime-kasm-user pipewire &
-                sleep 2
-            else
-                echo "PipeWire already running"
-            fi
+            # Kill any existing PipeWire processes to avoid conflicts
+            pkill -f pipewire || true
+            pkill -f wireplumber || true
+            sleep 1
 
-            if ! pgrep -x "wireplumber" > /dev/null; then
-                echo "Starting WirePlumber"
-                PIPEWIRE_RUNTIME_DIR=/tmp/runtime-kasm-user wireplumber &
-                sleep 2
-            else
-                echo "WirePlumber already running"
-            fi
+            # Clean up old sockets
+            rm -f /tmp/pipewire-0.lock /tmp/pipewire-0/lock /tmp/runtime-kasm-user/pulse/native 2>/dev/null || true
 
-            if ! pgrep -x "pipewire-pulse" > /dev/null; then
-                echo "Starting PipeWire-Pulse"
-                PIPEWIRE_RUNTIME_DIR=/tmp/runtime-kasm-user PULSE_RUNTIME_PATH=/tmp/runtime-kasm-user/pulse pipewire-pulse &
-                sleep 2
-            else
-                echo "PipeWire-Pulse already running"
-            fi
+            echo "Starting PipeWire daemon..."
+            PIPEWIRE_RUNTIME_DIR=/tmp/runtime-kasm-user pipewire > /tmp/pipewire.log 2>&1 &
+            sleep 3
+
+            echo "Starting WirePlumber..."
+            PIPEWIRE_RUNTIME_DIR=/tmp/runtime-kasm-user wireplumber > /tmp/wireplumber.log 2>&1 &
+            sleep 2
+
+            echo "Starting PipeWire-Pulse..."
+            PIPEWIRE_RUNTIME_DIR=/tmp/runtime-kasm-user PULSE_RUNTIME_PATH=/tmp/runtime-kasm-user/pulse pipewire-pulse > /tmp/pipewire-pulse.log 2>&1 &
+            sleep 2
 
             # Wait for PulseAudio socket to be ready
             echo "Waiting for PulseAudio socket..."
@@ -504,6 +532,12 @@ fi
 VNC_IP=$(hostname -i)
 if [[ $DEBUG == true ]]; then
     echo "IP Address used for external bind: $VNC_IP"
+fi
+
+# Set up DBus session address for Flatpak and other services
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
+if [[ $DEBUG == true ]]; then
+    echo "DBus session bus address: $DBUS_SESSION_BUS_ADDRESS"
 fi
 
 # Create cert for KasmVNC

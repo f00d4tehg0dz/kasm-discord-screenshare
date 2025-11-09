@@ -127,12 +127,34 @@ RUN echo '[Desktop Entry]\nVersion=1.0\nName=VLC Media Player\nComment=Multimedi
 RUN echo '[Desktop Entry]\nVersion=1.0\nName=WebCord\nComment=WebCord Client\nExec=webcord --no-sandbox\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/webcord.desktop \
     && chmod +x $HOME/Desktop/webcord.desktop
 
+# Install Flatpak, xdg-desktop-portal for sandboxed applications
+RUN apt-get update && apt-get install -y \
+    flatpak \
+    xdg-desktop-portal \
+    xdg-desktop-portal-gtk \
+    fuse3 \
+    bubblewrap
+
+# Setup Flatpak directories and permissions
+RUN mkdir -p /home/kasm-user/.local/share/flatpak \
+    && mkdir -p /var/lib/flatpak \
+    && chmod 755 /home/kasm-user/.local/share/flatpak \
+    && chmod 755 /var/lib/flatpak
+
+# Add Flathub remote and install Plex Desktop
+RUN flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo \
+    && flatpak install -y --noninteractive flathub tv.plex.PlexDesktop
+
 # Create Downloads directory for kasm-user
 RUN mkdir -p /home/kasm-user/Downloads/ \
     && mkdir -p /home/kasm-default-profile/Downloads/
 
 # Copy the default profile to the home directory
 RUN cp -rp /home/kasm-default-profile/. /home/kasm-user/ --no-preserve=mode
+
+# Create Plex desktop shortcut AFTER profile copy so it's not overwritten
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Plex Media\nComment=Plex Media Desktop Client\nExec=flatpak run tv.plex.PlexDesktop\nIcon=tv.plex.PlexDesktop\nType=Application\nCategories=AudioVideo;Media;\n' > /home/kasm-user/Desktop/plex.desktop \
+    && chmod +x /home/kasm-user/Desktop/plex.desktop
 
 # Cleanup
 RUN apt-get autoclean \
@@ -154,8 +176,8 @@ RUN mkdir -p /run/user/1000 /tmp/runtime-kasm-user /tmp/pipewire-0 && \
     chmod 755 /tmp/runtime-kasm-user /tmp/pipewire-0 && \
     chmod 1777 /tmp
 
-# Set environment variables
-ENV XDG_DATA_DIRS=/app/data:/usr/local/share:/usr/share
+# Set environment variables for Flatpak and XDG
+ENV XDG_DATA_DIRS=/app/data:/usr/local/share:/usr/share:/var/lib/flatpak/exports/share:/home/kasm-user/.local/share/flatpak/exports/share
 
 #ENV DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
 ENV XDG_RUNTIME_DIR="/tmp/runtime-kasm-user"

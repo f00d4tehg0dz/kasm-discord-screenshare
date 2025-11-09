@@ -10,3 +10,4 @@ Dockerfilebak
 /.history
 .env
 config.yaml
+.claude/settings.local.json

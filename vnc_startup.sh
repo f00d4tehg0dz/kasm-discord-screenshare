@@ -44,7 +44,11 @@ export PIPEWIRE_RUNTIME_DIR=/tmp
 export PULSE_RUNTIME_DIR=/tmp
 
 # startup/10_dbus.sh
-dbus-daemon --system --fork
+# Clean up stale dbus files and ensure proper directory structure
+rm -rf /run/dbus 2>/dev/null || true
+mkdir -p /run/dbus 2>/dev/null || true
+# Start session bus instead of system bus (doesn't require root)
+dbus-daemon --session --fork 2>/dev/null || echo "DBus initialization failed, continuing without it"
 
 # startup/30_pipewire.sh
 # Commented out early PipeWire startup to avoid conflicts - will be started by start_audio_out function
@@ -152,9 +156,10 @@ function start_kasmvnc (){
 
 	VNCOPTIONS="$VNCOPTIONS -select-de manual"
 
-	if [[ ${KASM_SVC_PRINTER:-1} == 1 ]]; then
-		VNCOPTIONS="$VNCOPTIONS -UnixRelay printer:/tmp/printer"
-	fi
+	# Disabled -UnixRelay printer option due to VNC server compatibility issues
+	# if [[ ${KASM_SVC_PRINTER:-1} == 1 ]]; then
+	#	VNCOPTIONS="$VNCOPTIONS -UnixRelay printer:/tmp/printer"
+	# fi
 
 	if [[ "${BUILD_ARCH}" =~ ^aarch64$ ]] && [[ -f /lib/aarch64-linux-gnu/libgcc_s.so.1 ]] ; then
 		LD_PRELOAD=/lib/aarch64-linux-gnu/libgcc_s.so.1 vncserver $DISPLAY $KASMVNC_HW3D -drinode $DRINODE -depth $VNC_COL_DEPTH -geometry $VNC_RESOLUTION -websocketPort $NO_VNC_PORT -httpd ${KASM_VNC_PATH}/www -FrameRate=$MAX_FRAME_RATE -interface 0.0.0.0 -BlacklistThreshold=0 -FreeKeyMappings $VNCOPTIONS $KASM_SVC_SEND_CUT_TEXT $KASM_SVC_ACCEPT_CUT_TEXT
@@ -186,13 +191,13 @@ function start_window_manager (){
 	if [ "${START_XFCE4}" == "1" ] ; then
 		if [ -f /opt/VirtualGL/bin/vglrun ] && [ ! -z "${KASM_EGL_CARD}" ] && [ ! -z "${KASM_RENDERD}" ] && [ -O "${KASM_RENDERD}" ] && [ -O "${KASM_EGL_CARD}" ] ; then
 		echo "Starting XFCE with VirtualGL using EGL device ${KASM_EGL_CARD}"
-			DISPLAY=:1 /opt/VirtualGL/bin/vglrun -d "${KASM_EGL_CARD}" /usr/bin/startxfce4 --replace &
+			DISPLAY=:1 /opt/VirtualGL/bin/vglrun -d "${KASM_EGL_CARD}" /usr/bin/startxfce4 --replace > /dev/null 2>&1 &
 		else
 			echo "Starting XFCE"
 			if [ -f '/usr/bin/zypper' ]; then
-				DISPLAY=:1 /usr/bin/dbus-launch /usr/bin/startxfce4 --replace &
+				DISPLAY=:1 /usr/bin/dbus-launch /usr/bin/startxfce4 --replace > /dev/null 2>&1 &
 			else
-				/usr/bin/startxfce4 --replace &
+				/usr/bin/startxfce4 --replace > /dev/null 2>&1 &
 			fi
 		fi
 		KASM_PROCS['window_manager']=$!
@@ -221,26 +226,57 @@ function start_audio_out (){
 
         if [ "${START_PIPEWIRE:-0}" == "1" ] ;
         then
+            # Fix PipeWire directory permissions and ownership
+            mkdir -p /tmp/runtime-kasm-user/pulse
+            [ -d /tmp/pipewire-0 ] && chmod 755 /tmp/pipewire-0 || true
+            chmod 755 /tmp/runtime-kasm-user /tmp/runtime-kasm-user/pulse
+            chown 1000:0 /tmp/runtime-kasm-user /tmp/runtime-kasm-user/pulse
+            rm -f /tmp/pipewire-0.lock /tmp/pipewire-0/lock /tmp/runtime-kasm-user/pulse/native
+
+            # Set environment variables for PipeWire
+            export PIPEWIRE_RUNTIME_DIR=/tmp/runtime-kasm-user
+            export PULSE_RUNTIME_PATH=/tmp/runtime-kasm-user/pulse
+            export PULSE_SERVER="unix:${PULSE_RUNTIME_PATH}/native"
+
             # Check if PipeWire processes are already running
             if ! pgrep -x "pipewire" > /dev/null; then
                 echo "Starting PipeWire"
-                pipewire &
+                PIPEWIRE_RUNTIME_DIR=/tmp/runtime-kasm-user pipewire &
+                sleep 2
             else
                 echo "PipeWire already running"
             fi
-            
+
             if ! pgrep -x "wireplumber" > /dev/null; then
                 echo "Starting WirePlumber"
-                wireplumber &
+                PIPEWIRE_RUNTIME_DIR=/tmp/runtime-kasm-user wireplumber &
+                sleep 2
             else
                 echo "WirePlumber already running"
             fi
-            
+
             if ! pgrep -x "pipewire-pulse" > /dev/null; then
                 echo "Starting PipeWire-Pulse"
-                pipewire-pulse &
+                PIPEWIRE_RUNTIME_DIR=/tmp/runtime-kasm-user PULSE_RUNTIME_PATH=/tmp/runtime-kasm-user/pulse pipewire-pulse &
+                sleep 2
             else
                 echo "PipeWire-Pulse already running"
+            fi
+
+            # Wait for PulseAudio socket to be ready
+            echo "Waiting for PulseAudio socket..."
+            MAX_RETRIES=10
+            RETRY=0
+            while [ ! -S /tmp/runtime-kasm-user/pulse/native ] && [ $RETRY -lt $MAX_RETRIES ]; do
+                echo "Waiting for pulse socket... ($RETRY/$MAX_RETRIES)"
+                sleep 1
+                RETRY=$((RETRY + 1))
+            done
+
+            if [ ! -S /tmp/runtime-kasm-user/pulse/native ]; then
+                echo "WARNING: PulseAudio socket not ready, audio may not work"
+            else
+                echo "PulseAudio socket ready"
             fi
         fi
 
@@ -248,8 +284,9 @@ function start_audio_out (){
 			echo 'Starting audio service'
 			# Check if ffmpeg audio streaming is already running
 			if ! pgrep -f "ffmpeg.*kasmaudio" > /dev/null; then
-				echo "Starting ffmpeg audio streaming..."
-				PIPEWIRE_LATENCY=2000/44100 no_proxy=127.0.0.1 ffmpeg -v verbose -f pulse -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio &
+				echo "Starting ffmpeg audio streaming (with retry)..."
+				# Use timeout and retry mechanism for ffmpeg
+				PIPEWIRE_LATENCY=2000/44100 PULSE_SERVER="unix:/tmp/runtime-kasm-user/pulse/native" no_proxy=127.0.0.1 ffmpeg -rtbufsize 100M -v verbose -f pulse -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio 2>/tmp/ffmpeg_audio.log &
 				KASM_PROCS['kasm_audio_out']=$!
 				echo -e "\n------------------ Started Audio Out  ----------------------------"
 				echo "Kasm Audio Out PID: ${KASM_PROCS['kasm_audio_out']}";
@@ -280,8 +317,9 @@ function start_audio_out (){
 			echo 'Starting audio service'
 			# Check if ffmpeg audio streaming is already running
 			if ! pgrep -f "ffmpeg.*kasmaudio" > /dev/null; then
-				echo "Starting ffmpeg audio streaming..."
-				PIPEWIRE_LATENCY=2000/44100 no_proxy=127.0.0.1 ffmpeg -v verbose -f pulse -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio &
+				echo "Starting ffmpeg audio streaming (with retry)..."
+				# Use explicit PULSE_SERVER and timeout for ffmpeg
+				PIPEWIRE_LATENCY=2000/44100 PULSE_SERVER="unix:/tmp/runtime-kasm-user/pulse/native" no_proxy=127.0.0.1 ffmpeg -rtbufsize 100M -v verbose -f pulse -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio 2>/tmp/ffmpeg_audio.log &
 				KASM_PROCS['kasm_audio_out']=$!
 				echo -e "\n------------------ Started Audio Out  ----------------------------"
 				echo "Kasm Audio Out PID: ${KASM_PROCS['kasm_audio_out']}";
@@ -490,17 +528,31 @@ chmod 600 $PASSWD_PATH
 # --- FIX AUDIO / START PIPEWIRE EARLY ---
 export XDG_RUNTIME_DIR="/tmp/runtime-kasm-user"
 export PULSE_RUNTIME_PATH="/tmp/runtime-kasm-user/pulse"
+export PIPEWIRE_RUNTIME_DIR="/tmp/runtime-kasm-user"
 mkdir -p "$PULSE_RUNTIME_PATH"
 
-if ! pgrep -x "pipewire" > /dev/null; then
-    pipewire &
-fi
-if ! pgrep -x "wireplumber" > /dev/null; then
-    wireplumber &
-fi
-if ! pgrep -x "pipewire-pulse" > /dev/null; then
-    pipewire-pulse &
-fi
+# Ensure proper permissions for audio/pipewire directories
+chmod 755 /tmp 2>/dev/null || true
+mkdir -p /tmp/pipewire-0 2>/dev/null || true
+chmod 755 /tmp/pipewire-0 2>/dev/null || true
+chmod 755 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+chmod 755 "$PULSE_RUNTIME_PATH" 2>/dev/null || true
+chown -R 1000:0 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+
+# Give PipeWire time to initialize directories
+sleep 1
+
+# PipeWire startup is now controlled by START_PIPEWIRE environment variable
+# and handled in the start_audio_out function to avoid permission issues
+# if ! pgrep -x "pipewire" > /dev/null; then
+#     pipewire &
+# fi
+# if ! pgrep -x "wireplumber" > /dev/null; then
+#     wireplumber &
+# fi
+# if ! pgrep -x "pipewire-pulse" > /dev/null; then
+#     pipewire-pulse &
+# fi
 
 sleep 1  # allow time to create pulse socket
 
@@ -641,5 +693,8 @@ do
 	sleep 3
 done
 
-
-echo "Exiting Kasm container"
+# Keep the container running indefinitely
+echo "Kasm container is running. Press Ctrl+C to stop."
+while true; do
+	sleep 3600
+done

@@ -149,7 +149,10 @@ ENV HOME /home/kasm-user
 WORKDIR $HOME
 
 RUN mkdir -p $HOME && chown -R 1000:0 $HOME
-RUN mkdir -p /run/user/1000 /tmp/runtime-kasm-user && chown -R 1000:0 /run/user/1000 /tmp/runtime-kasm-user
+RUN mkdir -p /run/user/1000 /tmp/runtime-kasm-user /tmp/pipewire-0 && \
+    chown -R 1000:0 /run/user/1000 /tmp/runtime-kasm-user /tmp/pipewire-0 && \
+    chmod 755 /tmp/runtime-kasm-user /tmp/pipewire-0 && \
+    chmod 1777 /tmp
 
 # Set environment variables
 ENV XDG_DATA_DIRS=/app/data:/usr/local/share:/usr/share
@@ -162,8 +165,8 @@ ENV PULSE_RUNTIME_PATH="/tmp/runtime-kasm-user/pulse"
 ENV PIPEWIRE_RUNTIME_DIR="/tmp/runtime-kasm-user"
 ENV PIPEWIRE_LATENCY="512/48000"
 
-# Enable PipeWire by default and set additional audio environment variables
-ENV START_PIPEWIRE=1
+# Disable early PipeWire startup - let the desktop environment handle it
+ENV START_PIPEWIRE=0
 ENV PULSE_SERVER="unix:/tmp/runtime-kasm-user/pulse/native"
 ENV PIPEWIRE_DEBUG=3
 ENV SPA_PLUGIN_DIR="/usr/lib/x86_64-linux-gnu/spa-0.2"
@@ -187,7 +190,7 @@ RUN chmod +x /home/kasm-user/Desktop/*.desktop \
 # Download pipewire-screenaudio Firefox add-on XPI file
 RUN wget -O /home/kasm-user/Downloads/pipewire-screenaudio.xpi "https://addons.mozilla.org/firefox/downloads/latest/pipewire-screenaudio/addon-1564124-latest.xpi"
 RUN cp /home/kasm-user/Downloads/pipewire-screenaudio.xpi /home/kasm-default-profile/Downloads/pipewire-screenaudio.xpi
-RUN mkdir -p /run/dbus && chown -R 1000:0 /run/dbus
+RUN mkdir -p /run/dbus && chown -R 1000:0 /run/dbus && chmod 755 /run/dbus
 RUN mkdir -p /dev/snd && chown -R 1000:0 /dev/snd
 RUN $STARTUPDIR/set_user_permission.sh $HOME
 

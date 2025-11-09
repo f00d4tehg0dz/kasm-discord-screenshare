@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  kasmdiscord:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kasmdiscord
+    ports:
+      - "6901:6901"      # KasmVNC web interface
+      - "5900:5900"      # VNC protocol
+      - "8081:8081"      # Audio websocket
+      - "4901:4901"      # Audio output
+      - "4902:4902"      # Audio input
+      - "4905:4905"      # Webcam
+    environment:
+      # VNC Configuration
+      - VNC_PW=vncpassword
+      - VNC_VIEW_ONLY_PW=viewonlypassword
+      - VNC_COL_DEPTH=24
+      - VNC_RESOLUTION=1280x720
+      - MAX_FRAME_RATE=30
+      - NO_VNC_PORT=6901
+
+      # Kasm Services
+      - KASM_SVC_AUDIO=1
+      - KASM_SVC_AUDIO_INPUT=1
+      - KASM_SVC_UPLOADS=1
+      - KASM_SVC_GAMEPAD=1
+      - KASM_SVC_WEBCAM=0
+      - KASM_SVC_PRINTER=0
+      - KASM_SVC_DISCORD_RPC=1
+
+      # PipeWire Configuration
+      - START_PIPEWIRE=1
+      - PIPEWIRE_DEBUG=2
+      - DISABLE_RTKIT=1
+
+      # Desktop Environment
+      - START_XFCE4=1
+
+    # Volumes for persistent data and proper permissions
+    volumes:
+      # Home directory - for user settings and config
+      - kasmdiscord_home:/home/kasm-user
+
+      # PipeWire/Audio runtime - must be writable by user 1000
+      - kasmdiscord_runtime:/tmp/runtime-kasm-user
+
+      # PipeWire socket directory - must be writable
+      - kasmdiscord_pipewire:/tmp/pipewire-0
+
+      # Temporary directory with proper permissions
+      - kasmdiscord_tmp:/tmp
+
+    # Security options for Docker/Portainer compatibility
+    cap_add:
+      - SYS_ADMIN
+      - NET_ADMIN
+
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+    # Keep container running
+    stdin_open: true
+    tty: true
+
+    # Restart policy
+    restart: unless-stopped
+
+volumes:
+  kasmdiscord_home:
+    driver: local
+  kasmdiscord_runtime:
+    driver: local
+  kasmdiscord_pipewire:
+    driver: local
+  kasmdiscord_tmp:
+    driver: local

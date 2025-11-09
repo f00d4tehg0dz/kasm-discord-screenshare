@@ -75,6 +75,16 @@ if command -v systemd-run &>/dev/null 2>&1; then
     systemd-run --user --scope --property=KillMode=process true 2>/dev/null || echo "systemd user session not available (expected in Docker)"
 fi
 
+# Start XDG Desktop Portal for Flatpak sandboxing support
+echo "Starting XDG Desktop Portal for Flatpak..."
+if ! pgrep -f xdg-desktop-portal > /dev/null 2>&1; then
+    /usr/libexec/xdg-desktop-portal &
+    sleep 1
+    echo "XDG Desktop Portal started"
+else
+    echo "XDG Desktop Portal already running"
+fi
+
 # startup/30_pipewire.sh
 # Commented out early PipeWire startup to avoid conflicts - will be started by start_audio_out function
 # pipewire &

@@ -72,6 +72,10 @@ services:
     stdin_open: true
     tty: true
 
+    # Enable systemd for Flatpak support (required for Flatpak to initialize)
+    init: true
+    privileged: true
+
     # Restart policy
     restart: unless-stopped
 

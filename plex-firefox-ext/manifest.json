@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "plex-discord-control@local",
+      "strict_min_version": "89.0"
+    }
+  },
+  "name": "Plex Discord Control",
+  "version": "1.2.1",
+  "description": "Control Plex playback from Discord",
+  "permissions": ["tabs", "scripting", "activeTab", "webRequest", "webRequestBlocking", "storage"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; connect-src 'self' ws://* wss://*;"
+  },
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  }
+}

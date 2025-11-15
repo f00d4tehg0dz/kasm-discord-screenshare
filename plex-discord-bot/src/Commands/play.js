@@ -1,0 +1,147 @@
+import Command from '../Structures/Command.js';
+import PlexAPI from '../Utilities/PlexAPI.js';
+import Logger from '../Utilities/Logger.js';
+import { EmbedBuilder } from 'discord.js';
+import { getWebSocketClient } from '../Utilities/WebSocketClient.js';
+
+const logger = new Logger('PlayCommand');
+
+class PlayCommand extends Command {
+	constructor() {
+		super({
+			name: 'play',
+			description: 'Search for movies and queue them to your Plex playlist',
+			type: 'SLASH',
+			slashCommandOptions: [
+				{
+					name: 'query',
+					description: 'Movie title to search for',
+					type: 3, // STRING type
+					required: true,
+				},
+				{
+					name: 'limit',
+					description: 'Number of results to show (1-10, default: 5)',
+					type: 4, // INTEGER type
+					required: false,
+				},
+				{
+					name: 'autoplay',
+					description: 'Auto-play first result via Firefox extension (default: false)',
+					type: 5, // BOOLEAN type
+					required: false,
+				},
+			],
+			run: async (client, interaction) => {
+				try {
+					await interaction.deferReply({ ephemeral: false });
+
+					const query = interaction.options.getString('query');
+					const limit = interaction.options.getInteger('limit') || 5;
+					const autoplay = interaction.options.getBoolean('autoplay') || false;
+					logger.log(`Searching for: ${query} (autoplay: ${autoplay})`);
+
+					// Search for content
+					const searchResults = await PlexAPI.search(query);
+
+					if (!searchResults?.Metadata || searchResults.Metadata.length === 0) {
+						return interaction.editReply({
+							content: '❌ Could not find any movies matching that search.',
+						});
+					}
+
+					// Limit results
+					const results = searchResults.Metadata.slice(0, Math.min(limit, 10));
+
+					// Build results embed
+					const embed = new EmbedBuilder()
+						.setColor(0xE5A00D)
+						.setTitle(`🎬 Search Results for "${query}"`)
+						.setDescription(`Found ${searchResults.Metadata.length} results (showing ${results.length})`)
+						.setTimestamp();
+
+					results.forEach((item, index) => {
+						const year = item.year ? ` (${item.year})` : '';
+						const summary = item.summary ? item.summary.substring(0, 100) + '...' : 'No description';
+						embed.addFields({
+							name: `${index + 1}. ${item.title}${year}`,
+							value: summary,
+							inline: false,
+						});
+					});
+
+					embed.addFields({
+						name: '📌 Available Controls via Discord',
+						value:
+							'• `/play` - Search and queue content\n' +
+							'• `/pause` - Pause playback\n' +
+							'• `/resume` - Resume playback\n' +
+							'• `/skip` - Skip to next media\n' +
+							'**Also available:** Spacebar = Play/Pause, Arrow Keys = Seek',
+						inline: false,
+					});
+
+					// Create play queue for first result
+					const firstMovie = results[0];
+
+					try {
+						logger.log(`Creating play queue for: ${firstMovie.title}`);
+						await PlexAPI.createPlayQueue(firstMovie.key);
+
+						embed.setFooter({
+							text: `✅ Queued: ${firstMovie.title}`,
+						});
+
+						// If autoplay requested, send play command via WebSocket
+						if (autoplay) {
+							try {
+								const wsClient = await getWebSocketClient();
+								if (wsClient.isReady()) {
+									logger.log('Sending autoplay command');
+									await wsClient.sendCommand({ action: 'play' });
+									embed.addFields({
+										name: '▶️ Autoplay Enabled',
+										value: 'Playback started via Firefox extension',
+										inline: false,
+									});
+								} else {
+									logger.warn('WebSocket not ready for autoplay');
+									embed.addFields({
+										name: '⚠️ Autoplay Note',
+										value: 'Firefox extension not connected. Content queued - use `/resume` to start playback.',
+										inline: false,
+									});
+								}
+							} catch (wsError) {
+								logger.warn(`Autoplay failed: ${wsError.message}`);
+								embed.addFields({
+									name: '⚠️ Autoplay Failed',
+									value: `Content queued successfully. ${wsError.message}`,
+									inline: false,
+								});
+							}
+						}
+
+						return interaction.editReply({ embeds: [embed] });
+					} catch (playError) {
+						// Queue creation might fail, but search results are still useful
+						logger.warn(`Queue creation failed: ${playError.message}`);
+
+						embed.setFooter({
+							text: `⚠️ Found results but queue creation failed. Search results shown above.`,
+						});
+
+						return interaction.editReply({ embeds: [embed] });
+					}
+				} catch (error) {
+					logger.error(`Command failed: ${error.message}`);
+					return interaction.editReply({
+						content: `❌ Error: ${error.message}`,
+					});
+				}
+			},
+		});
+	}
+}
+
+export default PlayCommand;

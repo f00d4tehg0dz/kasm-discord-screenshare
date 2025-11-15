@@ -141,9 +141,15 @@ RUN mkdir -p /home/kasm-user/.local/share/flatpak \
     && chmod 755 /home/kasm-user/.local/share/flatpak \
     && chmod 755 /var/lib/flatpak
 
-# Add Flathub remote and install Plex Desktop
-RUN flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo \
-    && flatpak install -y --noninteractive flathub tv.plex.PlexDesktop
+# Install MPV and plex-mpv-shim for Plex playback control
+RUN apt-get update && apt-get install -y \
+    mpv \
+    python3-pip \
+    && pip3 install --no-cache-dir --break-system-packages \
+    plex-mpv-shim \
+    pystray \
+    pillow \
+    python-xlib
 
 # Create Downloads directory for kasm-user
 RUN mkdir -p /home/kasm-user/Downloads/ \
@@ -151,10 +157,6 @@ RUN mkdir -p /home/kasm-user/Downloads/ \
 
 # Copy the default profile to the home directory
 RUN cp -rp /home/kasm-default-profile/. /home/kasm-user/ --no-preserve=mode
-
-# Create Plex desktop shortcut AFTER profile copy so it's not overwritten
-RUN echo '[Desktop Entry]\nVersion=1.0\nName=Plex Media\nComment=Plex Media Desktop Client\nExec=flatpak run tv.plex.PlexDesktop\nIcon=tv.plex.PlexDesktop\nType=Application\nCategories=AudioVideo;Media;\n' > /home/kasm-user/Desktop/plex.desktop \
-    && chmod +x /home/kasm-user/Desktop/plex.desktop
 
 # Cleanup
 RUN apt-get autoclean \
@@ -164,6 +166,10 @@ RUN apt-get autoclean \
     && rm -rf $INST_DIR
 
 COPY ./vnc_startup.sh $STARTUPDIR/vnc_startup.sh
+
+# Copy prebuilt Firefox extension
+RUN mkdir -p /app/plex-firefox-ext
+COPY ./plex-firefox-ext/plex-discord-control@local.xpi /app/plex-firefox-ext/
 
 # Userspace Runtime
 # Userspace Runtime
@@ -225,5 +231,241 @@ RUN mkdir -p /home/kasm-user/.mozilla/firefox \
     && mkdir -p /home/kasm-default-profile/.mozilla/firefox \
     && echo 'user_pref("media.cubeb.backend", "pipewire");\nuser_pref("media.cubeb.sandbox", false);\nuser_pref("media.getusermedia.screensharing.enabled", true);\nuser_pref("media.getusermedia.browser.enabled", true);\nuser_pref("media.getusermedia.audiocapture.enabled", true);\nuser_pref("media.navigator.permission.disabled", true);\nuser_pref("media.autoplay.default", 0);' > /home/kasm-user/.mozilla/firefox/user.js \
     && cp /home/kasm-user/.mozilla/firefox/user.js /home/kasm-default-profile/.mozilla/firefox/user.js
+
+# Install WebSocket libraries for plex-discord-server and WSS proxy
+RUN pip3 install --no-cache-dir --break-system-packages websockets aiohttp aiofiles
+
+# Create plex-discord-server WebSocket server with inter-instance message forwarding
+RUN mkdir -p /home/kasm-user/.local/bin && cat > /home/kasm-user/.local/bin/plex-discord-server << 'PYEOF'
+#!/usr/bin/env python3
+import asyncio, websockets, json, logging, ssl, argparse, sys, os
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(message)s')
+logger = logging.getLogger(__name__)
+IPC_SOCKET_PATH = os.environ.get('IPC_SOCKET_PATH', '/tmp/plex-discord-ipc.sock')
+class PlexDiscordServer:
+    def __init__(self, host='0.0.0.0', port=10100, ssl_context=None):
+        self.host, self.port, self.clients, self.ssl_context = host, port, set(), ssl_context
+        self.port_type = 'discord' if port == 10100 else 'browser'
+        self.ipc_reader = None
+        self.ipc_writer = None
+        self.discord_bot = None  # Store Discord bot connection for responses
+        self.pending_requests = {}  # Map request id to response handler
+    async def connect_ipc(self):
+        try:
+            reader, writer = await asyncio.open_unix_connection(IPC_SOCKET_PATH)
+            self.ipc_reader, self.ipc_writer = reader, writer
+            logger.info(f'Connected to IPC socket for {self.port_type} instance')
+            asyncio.create_task(self.read_ipc_messages())
+        except Exception as e:
+            logger.warning(f'Could not connect to IPC socket: {e}')
+    async def read_ipc_messages(self):
+        while True:
+            try:
+                line = await self.ipc_reader.readuntil(b'\n')
+                if not line: break
+                msg = json.loads(line.decode())
+                # If this is a response (has id and status), route back to Discord bot
+                if msg.get('id') and msg.get('status') and self.discord_bot:
+                    logger.debug(f'Routing response back to Discord bot: {msg}')
+                    try: await self.discord_bot.send(json.dumps(msg))
+                    except: pass
+                else:
+                    await self.broadcast_to_clients(msg)
+            except Exception as e:
+                logger.debug(f'IPC read error: {e}')
+                break
+    async def send_to_ipc(self, message):
+        if self.ipc_writer:
+            try:
+                self.ipc_writer.write((json.dumps(message) + '\n').encode())
+                await self.ipc_writer.drain()
+            except Exception as e:
+                logger.debug(f'IPC send error: {e}')
+    async def broadcast_to_clients(self, cmd):
+        if not self.clients: return
+        disconnected = set()
+        for client in self.clients:
+            try:
+                await client.send(json.dumps(cmd))
+                logger.debug(f'Sent command via IPC to browser client')
+            except websockets.exceptions.ConnectionClosed:
+                disconnected.add(client)
+        if disconnected:
+            self.clients -= disconnected
+    async def handle_client(self, websocket, path):
+        client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
+        try:
+            if path == '/discord': logger.info(f'Discord bot connected from {client_id}'); await self.handle_discord_bot(websocket)
+            elif path == '/browser': logger.info(f'Browser client connected from {client_id}'); await self.handle_browser_client(websocket)
+            else: await websocket.send(json.dumps({'error': 'Unknown endpoint. Use /discord or /browser'}))
+        except websockets.exceptions.ConnectionClosed: logger.info(f'Client disconnected: {client_id}')
+        except Exception as e: logger.error(f'Error handling client: {e}')
+    async def handle_discord_bot(self, websocket):
+        self.discord_bot = websocket  # Store connection for response routing
+        try:
+            async for message in websocket:
+                try:
+                    cmd = json.loads(message)
+                    logger.info(f'Discord command: {cmd.get("action")}')
+                    await self.send_to_ipc(cmd)
+                    if self.clients:
+                        disconnected = set()
+                        for client in self.clients:
+                            try: await client.send(json.dumps(cmd))
+                            except websockets.exceptions.ConnectionClosed: disconnected.add(client)
+                        self.clients -= disconnected
+                        await websocket.send(json.dumps({'status': 'command_sent', 'clients': len(self.clients)}))
+                    else: await websocket.send(json.dumps({'status': 'command_sent', 'message': 'Command queued to IPC', 'clients': 0}))
+                except json.JSONDecodeError: await websocket.send(json.dumps({'error': 'Invalid JSON'}))
+        except websockets.exceptions.ConnectionClosed:
+            logger.info('Discord bot disconnected')
+            self.discord_bot = None
+    async def handle_browser_client(self, websocket):
+        self.clients.add(websocket); logger.info(f'Browser clients connected: {len(self.clients)}')
+        try:
+            await websocket.send(json.dumps({'type': 'ready', 'message': 'Extension connected to control server'}))
+            async for message in websocket:
+                try:
+                    data = json.loads(message)
+                    if data.get('type') == 'heartbeat': logger.debug(f'Heartbeat from browser client')
+                    elif data.get('type') == 'status': logger.debug(f'Status from browser: {data}')
+                    elif data.get('id'): logger.debug(f'Browser response: {data}'); await self.send_to_ipc(data)
+                except json.JSONDecodeError: pass
+        except websockets.exceptions.ConnectionClosed: logger.info('Browser client disconnected')
+        finally: self.clients.discard(websocket); logger.info(f'Browser clients remaining: {len(self.clients)}')
+ipc_clients = []
+async def ipc_server(ready_event):
+    if os.path.exists(IPC_SOCKET_PATH): os.remove(IPC_SOCKET_PATH)
+    async def handle_ipc(reader, writer):
+        ipc_clients.append({'reader': reader, 'writer': writer})
+        logger.debug(f'IPC client connected, total: {len(ipc_clients)}')
+        try:
+            while True:
+                line = await reader.readuntil(b'\n')
+                if not line: break
+                for client in ipc_clients:
+                    if client['writer'] != writer:
+                        try:
+                            client['writer'].write(line)
+                            await client['writer'].drain()
+                        except:
+                            pass
+        except asyncio.IncompleteReadError:
+            pass
+        except Exception as e:
+            logger.debug(f'IPC error: {e}')
+        finally:
+            ipc_clients.remove({'reader': reader, 'writer': writer})
+    server = await asyncio.start_unix_server(handle_ipc, IPC_SOCKET_PATH)
+    logger.info(f'IPC socket listening at {IPC_SOCKET_PATH}')
+    ready_event.set()
+    await server.serve_forever()
+async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
+    parser.add_argument('--port', type=int, default=10100, help='Port to bind to')
+    parser.add_argument('--cert', help='Path to SSL certificate file')
+    parser.add_argument('--key', help='Path to SSL key file')
+    args = parser.parse_args()
+    ssl_context = None
+    protocol_scheme = 'ws'
+    if args.cert and args.key:
+        try:
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_context.load_cert_chain(certfile=args.cert, keyfile=args.key)
+            protocol_scheme = 'wss'
+            logger.info(f'SSL enabled with cert: {args.cert}')
+        except Exception as e:
+            logger.error(f'Failed to load SSL certificates: {e}')
+            sys.exit(1)
+    server = PlexDiscordServer(host=args.host, port=args.port, ssl_context=ssl_context)
+    if args.port == 10100:
+        ready_event = asyncio.Event()
+        asyncio.create_task(ipc_server(ready_event))
+        await ready_event.wait()
+    await server.connect_ipc()
+    logger.info('='*60); logger.info('Plex Discord Control Server'); logger.info('='*60)
+    logger.info(f'Starting WebSocket server on {protocol_scheme}://{args.host}:{args.port}')
+    logger.info(f'Discord bots connect to: {protocol_scheme}://localhost:{args.port}/discord')
+    logger.info(f'Browser extensions connect to: {protocol_scheme}://localhost:{args.port}/browser')
+    logger.info('='*60)
+    async with websockets.serve(server.handle_client, server.host, server.port, ssl=ssl_context):
+        logger.info('Server running... Press Ctrl+C to stop')
+        try: await asyncio.Future()
+        except KeyboardInterrupt: logger.info('Shutting down...')
+if __name__ == '__main__': asyncio.run(main())
+PYEOF
+
+RUN chmod +x /home/kasm-user/.local/bin/plex-discord-server
+
+# Create WebSocket SSL/WSS proxy for Firefox extension compatibility
+RUN cat > /home/kasm-user/.local/bin/websocket-proxy << 'PROXYEOF'
+#!/usr/bin/env python3
+import asyncio
+import ssl
+import websockets
+import json
+import logging
+
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(message)s')
+logger = logging.getLogger(__name__)
+
+async def proxy_websocket(websocket, path):
+    """Proxy WebSocket connections from WSS (client) to WSS (backend)"""
+    try:
+        # Create SSL context for connecting to the backend server (self-signed certificate)
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+        # Route to correct backend endpoint based on incoming path
+        backend_path = path if path in ['/discord', '/browser'] else '/browser'
+        # Use 127.0.0.1 instead of localhost for direct connection to loopback interface
+        backend_url = f'wss://127.0.0.1:10100{backend_path}'
+        logger.info(f'Routing incoming path {path} to backend: {backend_url}')
+
+        async with websockets.connect(backend_url, ssl=ssl_context) as backend:
+            async def forward_from_client():
+                try:
+                    async for message in websocket:
+                        await backend.send(message)
+                except websockets.exceptions.ConnectionClosed:
+                    pass
+
+            async def forward_from_backend():
+                try:
+                    async for message in backend:
+                        await websocket.send(message)
+                except websockets.exceptions.ConnectionClosed:
+                    pass
+
+            await asyncio.gather(forward_from_client(), forward_from_backend())
+    except Exception as e:
+        logger.error(f"Proxy error: {e}")
+
+async def main():
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ssl_context.load_cert_chain(
+        certfile='/home/kasm-user/.vnc/self.pem',
+        keyfile='/home/kasm-user/.vnc/self.pem'
+    )
+
+    async with websockets.serve(proxy_websocket, '0.0.0.0', 10101, ssl=ssl_context):
+        logger.info('='*60)
+        logger.info('WebSocket SSL Proxy (WSS)')
+        logger.info('='*60)
+        logger.info('WSS Proxy listening on wss://0.0.0.0:10101')
+        logger.info('Routing Discord and Browser connections to backend')
+        logger.info('='*60)
+        await asyncio.Future()  # run forever
+
+if __name__ == '__main__':
+    asyncio.run(main())
+PROXYEOF
+
+RUN chmod +x /home/kasm-user/.local/bin/websocket-proxy && \
+    chown -R 1000:0 /home/kasm-user/.local/bin/websocket-proxy
+
+EXPOSE 10009 10100 10101
 
 USER 1000

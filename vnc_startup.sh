@@ -85,12 +85,17 @@ else
     echo "XDG Desktop Portal already running"
 fi
 
-# startup/30_pipewire.sh
-# Commented out early PipeWire startup to avoid conflicts - will be started by start_audio_out function
-# pipewire &
-# wireplumber &
-# pipewire-pulse &
-# PIPEWIRE_LATENCY=2000/44100 pipewire no_proxy=127.0.0.1 ffmpeg -v verbose -f pipewire -i default -f mpegts -correct_ts_overflow 0 -codec:a mp2 -b:a 128k -ac 1 -muxdelay 0.001 http://127.0.0.1:8081/kasmaudio > /dev/null 2>&1 &
+# startup/21_plex_mpv_shim.sh
+# Configure plex-mpv-shim for Plex playback control
+echo "Configuring plex-mpv-shim..."
+
+# Create config directory for plex-mpv-shim
+mkdir -p /home/kasm-user/.config/plex-mpv-shim 2>/dev/null || true
+mkdir -p /home/kasm-default-profile/.config/plex-mpv-shim 2>/dev/null || true
+chmod 755 /home/kasm-user/.config/plex-mpv-shim 2>/dev/null || true
+chown -R 1000:0 /home/kasm-user/.config/plex-mpv-shim 2>/dev/null || true
+
+echo "plex-mpv-shim configured and ready to use"
 
 STARTUP_COMPLETE=0
 
@@ -186,6 +191,12 @@ function start_kasmvnc (){
 	fi
 
 	rm -rf $HOME/.vnc/*.pid
+
+	# Clean XFCE config to prevent "Unable to contact settings server" error
+	# This must happen before XFCE starts for the first time
+	rm -rf $HOME/.config/xfce4 2>/dev/null || true
+	rm -rf $HOME/.cache/xfce4 2>/dev/null || true
+
 	# Create xstartup script that properly initializes the desktop
 	cat > $HOME/.vnc/xstartup << 'XSTARTUP'
 #!/bin/bash
@@ -195,15 +206,195 @@ function start_kasmvnc (){
 export DISPLAY=:1
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
 
+# Log startup for debugging
+echo "[$(date)] xstartup started, user: $USER, PID: $$" > /tmpplexcontrol/xstartup-debug.log
+
 # Start XFCE4 desktop environment
-if [ -x /usr/bin/startxfce4 ]; then
-    /usr/bin/startxfce4 --replace
+if [ -x /usr/bin/xfce4-session ]; then
+    echo "[$(date)] Starting xfce4-session..." >> /tmp/xstartup-debug.log
+    # Start xfce4-session directly in the background
+    # Set DISPLAY explicitly to avoid issues
+    export DISPLAY=:1
+    /usr/bin/xfce4-session >> /tmp/xstartup-debug.log 2>&1 &
+    XFCE_PID=$!
+    echo "[$(date)] xfce4-session started with PID: $XFCE_PID" >> /tmp/xstartup-debug.log
 else
-    # Fallback to xterm if startxfce4 not available
-    xterm &
+    echo "[$(date)] xfce4-session not found, falling back to xterm" >> /tmp/xstartup-debug.log
+    # Fallback to xterm if XFCE not available
+    xterm >> /tmp/xstartup-debug.log 2>&1 &
 fi
+
+# SSL certificate is now generated in main vnc_startup.sh before vncserver starts
+# No need to regenerate it here - it's already at $HOME/.vnc/self.pem with CN=localhost, discord.xxx.com and SANs
+echo "[$(date)] Using pre-generated SSL certificate at $HOME/.vnc/self.pem" >> /tmp/xstartup-debug.log
+
+if command -v plex-discord-server &> /dev/null; then
+    echo "[$(date)] Starting plex-discord-server instances..." >> /tmp/xstartup-debug.log
+    # Instance 1: Listen on 0.0.0.0:10100 with SSL for external WSS connections
+    # This instance creates the IPC server socket that port 10009 will connect to
+    plex-discord-server --host 0.0.0.0 --port 10100 --cert "$HOME/.vnc/self.pem" --key "$HOME/.vnc/self.pem" > /tmp/websocket-wss.log 2>&1 &
+    WS_PID_WSS=$!
+    echo "[$(date)] plex-discord-server WSS started with PID: $WS_PID_WSS (wss://0.0.0.0:10100)" >> /tmp/xstartup-debug.log
+
+    # Wait for IPC socket to be created before starting the WS instance
+    sleep 3
+    echo "[$(date)] Waited 3 seconds for IPC socket initialization..." >> /tmp/xstartup-debug.log
+
+    # Instance 2: Listen on 127.0.0.1:10009 without SSL for local Firefox extension (plain WS)
+    # This instance connects to the IPC socket created by port 10100 instance
+    plex-discord-server --host 127.0.0.1 --port 10009 > /tmp/websocket-ws.log 2>&1 &
+    WS_PID_WS=$!
+    echo "[$(date)] plex-discord-server WS started with PID: $WS_PID_WS (ws://127.0.0.1:10009)" >> /tmp/xstartup-debug.log
+
+    WS_PID=$WS_PID_WSS
+elif [ -x /home/kasm-user/.local/bin/plex-discord-server ]; then
+    echo "[$(date)] Starting plex-discord-server instances from local path..." >> /tmp/xstartup-debug.log
+    # Instance 1: Listen on 0.0.0.0:10100 with SSL for external WSS connections
+    # This instance creates the IPC server socket that port 10009 will connect to
+    python3 /home/kasm-user/.local/bin/plex-discord-server --host 0.0.0.0 --port 10100 --cert "$HOME/.vnc/self.pem" --key "$HOME/.vnc/self.pem" > /tmp/websocket-wss.log 2>&1 &
+    WS_PID_WSS=$!
+    echo "[$(date)] plex-discord-server WSS started with PID: $WS_PID_WSS (wss://0.0.0.0:10100)" >> /tmp/xstartup-debug.log
+
+    # Wait for IPC socket to be created before starting the WS instance
+    sleep 3
+    echo "[$(date)] Waited 3 seconds for IPC socket initialization..." >> /tmp/xstartup-debug.log
+
+    # Instance 2: Listen on 127.0.0.1:10009 without SSL for local Firefox extension (plain WS)
+    # This instance connects to the IPC socket created by port 10100 instance
+    python3 /home/kasm-user/.local/bin/plex-discord-server --host 127.0.0.1 --port 10009 > /tmp/websocket-ws.log 2>&1 &
+    WS_PID_WS=$!
+    echo "[$(date)] plex-discord-server WS started with PID: $WS_PID_WS (ws://127.0.0.1:10009)" >> /tmp/xstartup-debug.log
+
+    WS_PID=$WS_PID_WSS
+else
+    echo "[$(date)] ERROR: plex-discord-server not found in PATH or /home/kasm-user/.local/bin" >> /tmp/xstartup-debug.log
+fi
+
+# Verify plex-discord-server started successfully
+sleep 2
+if [ ! -z "$WS_PID" ] && kill -0 $WS_PID 2>/dev/null; then
+    echo "[$(date)] plex-discord-server is running successfully on port 10100 (WSS)" >> /tmp/xstartup-debug.log
+else
+    echo "[$(date)] ERROR: plex-discord-server failed to start. Check /tmp/websocket.log" >> /tmp/xstartup-debug.log
+fi
+
+# Start WebSocket SSL proxy on port 10101 (for external Discord bot connections via nginx)
+echo "[$(date)] Starting WebSocket SSL proxy on port 10101..." >> /tmp/xstartup-debug.log
+if [ -x /home/kasm-user/.local/bin/websocket-proxy ]; then
+    python3 /home/kasm-user/.local/bin/websocket-proxy > /tmp/websocket-proxy.log 2>&1 &
+    PROXY_PID=$!
+    echo "[$(date)] WebSocket SSL proxy started with PID: $PROXY_PID (wss://0.0.0.0:10101)" >> /tmp/xstartup-debug.log
+
+    # Verify proxy started
+    sleep 2
+    if kill -0 $PROXY_PID 2>/dev/null; then
+        echo "[$(date)] WebSocket SSL proxy is running successfully on port 10101" >> /tmp/xstartup-debug.log
+    else
+        echo "[$(date)] ERROR: WebSocket SSL proxy failed to start. Check /tmp/websocket-proxy.log" >> /tmp/xstartup-debug.log
+    fi
+else
+    echo "[$(date)] WARNING: websocket-proxy not found at /home/kasm-user/.local/bin/websocket-proxy" >> /tmp/xstartup-debug.log
+fi
+
+# Keep the script running for other services
+sleep infinity
 XSTARTUP
 	chmod +x $HOME/.vnc/xstartup
+
+	# Install prebuilt Firefox Extension (.xpi file)
+	echo "Installing Plex Discord Control Firefox Extension..."
+
+	# Firefox extensions must be unpacked into a folder structure, not left as .xpi files
+	FIREFOX_PROFILE="$HOME/.mozilla/firefox/kasm"
+	EXT_FOLDER="$FIREFOX_PROFILE/extensions/plex-discord-control@local"
+	EXT_XPI_PATH="/app/plex-firefox-ext/plex-discord-control@local.xpi"
+
+	if [ -f "$EXT_XPI_PATH" ]; then
+		echo "Found Firefox extension XPI at: $EXT_XPI_PATH"
+
+		# Create extension directory
+		mkdir -p "$EXT_FOLDER"
+
+		# Remove old extension files to avoid permission issues on re-extraction
+		rm -rf "$EXT_FOLDER"/* 2>/dev/null || true
+
+		# Unpack the .xpi file (it's just a ZIP archive) into the extension folder
+		unzip -q "$EXT_XPI_PATH" -d "$EXT_FOLDER"
+
+		# List unpacked files
+		echo "Unpacked files in $EXT_FOLDER:"
+		ls -la "$EXT_FOLDER" 2>/dev/null || echo "Failed to list unpacked files"
+
+		if [ -f "$EXT_FOLDER/manifest.json" ]; then
+			echo "✓ Firefox Extension unpacked: $EXT_FOLDER"
+
+			# Create/update extensions.json metadata file to register the extension
+			# Firefox requires extensions to be explicitly registered in extensions.json
+			EXT_JSON="$FIREFOX_PROFILE/extensions.json"
+
+			# Create extensions.json with proper extension metadata
+			# Firefox requires absolute paths for unpacked extensions
+			cat > "$EXT_JSON" << EXTJSON
+{
+  "schemaVersion": 4,
+  "addons": [
+    {
+      "id": "plex-discord-control@local",
+      "version": "1.2.1",
+      "location": "app-system",
+      "path": "$EXT_FOLDER",
+      "type": "extension",
+      "enabled": true,
+      "applicationVersion": "89.0",
+      "platformVersion": "89.0"
+    }
+  ]
+}
+EXTJSON
+
+			echo "✓ Firefox Extension registered in extensions.json"
+		else
+			echo "⚠ Error: Failed to unpack .xpi file or manifest.json not found"
+		fi
+	else
+		echo "⚠ Warning: Prebuilt .xpi file not found at $EXT_XPI_PATH"
+		echo "  Extension will not be available"
+	fi
+
+	# Configure Firefox for WebSocket connections and certificate handling
+	# Create user.js which Firefox reads BEFORE applying default preferences
+	FIREFOX_USERJS="$FIREFOX_PROFILE/user.js"
+
+	# Create user.js with settings for WebSocket connections and self-signed cert handling
+	cat > "$FIREFOX_USERJS" << 'USERJS'
+// Allow connections without strict HTTPS requirements
+user_pref("dom.security.https_only_mode", false);
+user_pref("security.mixed_content.block_active_content", false);
+// Disable OCSP (Online Certificate Status Protocol) checking which can cause issues with self-signed certs
+user_pref("security.OCSP.enabled", 0);
+user_pref("security.cert_pinning.enforcement_level", 0);
+// Allow insecure connections to localhost (needed for self-signed certs in development)
+user_pref("security.fileuri.strict_origin_policy", false);
+USERJS
+
+	echo "✓ Firefox user.js configured for WebSocket and self-signed certificate support"
+
+	# Create profiles.ini to define the Firefox profile
+	mkdir -p "$HOME/.mozilla/firefox"
+	cat > "$HOME/.mozilla/firefox/profiles.ini" << 'PROFILES'
+[Profile0]
+Name=kasm
+IsRelative=1
+Path=kasm
+Default=1
+PROFILES
+
+	# Also install to kasm-default-profile if it exists
+	if [ -d /home/kasm-default-profile ] && [ -f "$EXT_XPI_PATH" ]; then
+		EXT_DEFAULT_PATH="/home/kasm-default-profile/.mozilla/firefox/kasm/extensions/plex-discord-control@local.xpi"
+		mkdir -p "$(dirname "$EXT_DEFAULT_PATH")"
+		cp "$EXT_XPI_PATH" "$EXT_DEFAULT_PATH" 2>/dev/null || true
+	fi
 
 	VNCOPTIONS="$VNCOPTIONS -select-de manual"
 
@@ -241,9 +432,9 @@ function start_window_manager (){
 
 	if [ "${START_XFCE4}" == "1" ] ; then
 		echo "XFCE4 will be started by VNC xstartup script"
-		# XFCE is now started by the xstartup script for better reliability
-		# Just wait a moment to ensure it initializes
-		sleep 3
+		# XFCE is now started by the xstartup script with proper initialization
+		# and config cleanup happens earlier in the startup process
+		sleep 2
 	else
 		echo "Skipping XFCE Startup"
 	fi
@@ -448,6 +639,7 @@ function start_webcam (){
 	fi
 }
 
+
 function start_printer (){
 		if [[ ${KASM_SVC_PRINTER:-1} == 1 ]]; then
 			echo 'Starting printer service'
@@ -466,11 +658,6 @@ function start_printer (){
 	fi
 }
 
-# function start_virtmic () {
-#     echo 'Configuring Virtmic to use Firefox'
-#     echo "Firefox" | /home/kasm-user/virtmic
-# 	echo "Firefox" | /home/kasm-default-profile/virtmic
-# }
 
 function start_discord_rich_presence (){
 	if [[ ${KASM_SVC_DISCORD_RPC:-1} == 1 ]]; then
@@ -550,9 +737,21 @@ if [[ $DEBUG == true ]]; then
     echo "DBus session bus address: $DBUS_SESSION_BUS_ADDRESS"
 fi
 
-# Create cert for KasmVNC
+# Create cert for KasmVNC with proper CN=localhost and SANs
+# Delete old cert to force regeneration with correct parameters
 mkdir -p ${HOME}/.vnc
-openssl req -x509 -nodes -days 3650 -newkey rsa:2048 -keyout ${HOME}/.vnc/self.pem -out ${HOME}/.vnc/self.pem -subj "/C=US/ST=VA/L=None/O=None/OU=DoFu/CN=kasm/emailAddress=none@none.none"
+rm -f ${HOME}/.vnc/self.pem
+
+# Generate SSL certificate with CN=localhost (for internal connections) and SANs for all hostnames
+# The certificate needs to work for:
+# 1. External: discord.xxx.com (through nginx)
+# 2. Internal: kasmdiscordplexcontrol (nginx upstream), localhost, 127.0.0.1 (local connections)
+echo "Generating SSL certificate with SANs for all connection methods..."
+openssl req -x509 -nodes -days 3650 -newkey rsa:2048 -keyout ${HOME}/.vnc/self.pem -out ${HOME}/.vnc/self.pem \
+    -subj "/C=US/ST=VA/L=None/O=None/OU=Plex/CN=kasmdiscordplexcontrol/emailAddress=none@none.none" \
+    -addext "subjectAltName=DNS:kasmdiscordplexcontrol,DNS:discord.xxx.com,DNS:localhost,DNS:127.0.0.1,IP:127.0.0.1" 2>&1
+chmod 600 ${HOME}/.vnc/self.pem
+echo "SSL certificate generated at ${HOME}/.vnc/self.pem"
 
 # first entry is control, second is view (if only one is valid for both)
 mkdir -p "$HOME/.vnc"
@@ -583,21 +782,6 @@ chmod 755 "$XDG_RUNTIME_DIR" 2>/dev/null || true
 chmod 755 "$PULSE_RUNTIME_PATH" 2>/dev/null || true
 chown -R 1000:0 "$XDG_RUNTIME_DIR" 2>/dev/null || true
 
-# Give PipeWire time to initialize directories
-sleep 1
-
-# PipeWire startup is now controlled by START_PIPEWIRE environment variable
-# and handled in the start_audio_out function to avoid permission issues
-# if ! pgrep -x "pipewire" > /dev/null; then
-#     pipewire &
-# fi
-# if ! pgrep -x "wireplumber" > /dev/null; then
-#     wireplumber &
-# fi
-# if ! pgrep -x "pipewire-pulse" > /dev/null; then
-#     pipewire-pulse &
-# fi
-
 sleep 1  # allow time to create pulse socket
 
 # start processes
@@ -608,11 +792,10 @@ start_audio_out
 start_audio_in
 start_upload
 start_gamepad
-#start_virtmic
 profile_size_check &
 start_webcam
 start_printer
-start_discord_rich_presence
+#start_discord_rich_presence
 
 
 STARTUP_COMPLETE=1

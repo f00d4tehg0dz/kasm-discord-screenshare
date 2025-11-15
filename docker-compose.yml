@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  kasmdiscord:
+  kasmdiscordplexcontrol:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: kasmdiscord
+    container_name: kasmdiscordplexcontrol
     ports:
       - "6901:6901"      # KasmVNC web interface
       - "5900:5900"      # VNC protocol
@@ -13,6 +13,9 @@ services:
       - "4901:4901"      # Audio output
       - "4902:4902"      # Audio input
       - "4905:4905"      # Webcam
+      - "3111:3111"      # plex-mpv-shim HTTP control port
+      - "10100:10100"      # Plex Discord WebSocket server (WSS)
+      - "10101:10101"      # WebSocket SSL Proxy (exposed for nginx reverse proxy)
     environment:
       # VNC Configuration
       - VNC_PW=vncpassword
@@ -30,6 +33,7 @@ services:
       - KASM_SVC_WEBCAM=0
       - KASM_SVC_PRINTER=0
       - KASM_SVC_DISCORD_RPC=1
+      - KASM_SVC_PLEX_MPV_SHIM=1
 
       # PipeWire Configuration
       - START_PIPEWIRE=1
@@ -41,17 +45,20 @@ services:
 
     # Volumes for persistent data and proper permissions
     volumes:
-      # Home directory - for user settings and config
-      - kasmdiscord_home:/home/kasm-user
+      # Home directory - for user settings and config (bind mount for persistence)
+      - ./kasm_home:/home/kasm-user
 
       # PipeWire/Audio runtime - must be writable by user 1000
-      - kasmdiscord_runtime:/tmp/runtime-kasm-user
+      - kasmdiscordplexcontrol_runtime:/tmp/runtime-kasm-user
 
       # PipeWire socket directory - must be writable
-      - kasmdiscord_pipewire:/tmp/pipewire-0
+      - kasmdiscordplexcontrol_pipewire:/tmp/pipewire-0
 
       # Temporary directory with proper permissions
-      - kasmdiscord_tmp:/tmp
+      - kasmdiscordplexcontrol_tmp:/tmp
+
+    # Network configuration for proper UPnP/multicast support (plex-mpv-shim discovery)
+    network_mode: bridge
 
     # Security options for Docker/Portainer compatibility
     cap_add:
@@ -80,11 +87,10 @@ services:
     restart: unless-stopped
 
 volumes:
-  kasmdiscord_home:
+  # kasmdiscordplexcontrol_home is now a bind mount (./kasm_home) for better persistence
+  kasmdiscordplexcontrol_runtime:
     driver: local
-  kasmdiscord_runtime:
+  kasmdiscordplexcontrol_pipewire:
     driver: local
-  kasmdiscord_pipewire:
-    driver: local
-  kasmdiscord_tmp:
+  kasmdiscordplexcontrol_tmp:
     driver: local

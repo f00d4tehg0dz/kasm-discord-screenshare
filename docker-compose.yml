@@ -14,8 +14,10 @@ services:
       - "4902:4902"      # Audio input
       - "4905:4905"      # Webcam
       - "3111:3111"      # plex-mpv-shim HTTP control port
-      - "10100:10100"      # Plex Discord WebSocket server (WSS)
-      - "10101:10101"      # WebSocket SSL Proxy (exposed for nginx reverse proxy)
+      - "18585:8080"     # Plex API HTTP Proxy (external host port for nginx routing)
+      - "8764:8764"      # Plex Discord WebSocket (WS for Firefox extension)
+      - "8765:8765"      # Plex Discord WebSocket server (WSS for Discord bot)
+      - "8766:8766"      # WebSocket SSL Proxy (exposed for nginx reverse proxy)
     environment:
       # VNC Configuration
       - VNC_PW=vncpassword
@@ -42,6 +44,11 @@ services:
 
       # Desktop Environment
       - START_XFCE4=1
+
+      # Plex Configuration
+      - IP=192.168.50.80
+      - PORT=32400
+      - PLEX_TOKEN=${PLEX_TOKEN}
 
     # Volumes for persistent data and proper permissions
     volumes:

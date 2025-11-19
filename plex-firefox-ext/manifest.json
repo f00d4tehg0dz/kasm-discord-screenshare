@@ -11,13 +11,12 @@
   "description": "Control Plex playback from Discord",
   "permissions": ["tabs", "scripting", "activeTab", "webRequest", "webRequestBlocking", "storage"],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; connect-src 'self' ws://* wss://*;"
+    "extension_pages": "script-src 'self'; connect-src 'self' ws://localhost:* ws://127.0.0.1:* ws://*.local:* wss://localhost:* wss://127.0.0.1:* wss://*.local:* wss://*.com:* wss://*.org:* wss://*.net:*;"
   },
   "host_permissions": [
     "<all_urls>"
   ],
   "background": {
-    "service_worker": "background.js",
     "scripts": ["background.js"]
   }
 }

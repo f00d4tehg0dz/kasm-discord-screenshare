@@ -41,6 +41,11 @@ class PlayCommand extends Command {
 					const autoplay = interaction.options.getBoolean('autoplay') || false;
 					logger.log(`Searching for: ${query} (autoplay: ${autoplay})`);
 
+					// Notify user that search is in progress
+					await interaction.editReply({
+						content: `🔍 Searching Plex library for "${query}"... This may take up to 30 seconds...`,
+					});
+
 					// Search for content
 					const searchResults = await PlexAPI.search(query);
 
@@ -63,8 +68,23 @@ class PlayCommand extends Command {
 					results.forEach((item, index) => {
 						const year = item.year ? ` (${item.year})` : '';
 						const summary = item.summary ? item.summary.substring(0, 100) + '...' : 'No description';
+
+						// Detect content type from the metadata
+						let typeEmoji = '🎬'; // Default to movie
+						let typeLabel = '';
+						if (item.type === 'show') {
+							typeEmoji = '📺';
+							typeLabel = ' [TV SHOW]';
+						} else if (item.type === 'episode') {
+							typeEmoji = '📺';
+							typeLabel = ' [EPISODE]';
+						} else if (item.type === 'movie') {
+							typeEmoji = '🎬';
+							typeLabel = ' [MOVIE]';
+						}
+
 						embed.addFields({
-							name: `${index + 1}. ${item.title}${year}`,
+							name: `${index + 1}. ${typeEmoji} ${item.title}${year}${typeLabel}`,
 							value: summary,
 							inline: false,
 						});
@@ -73,11 +93,12 @@ class PlayCommand extends Command {
 					embed.addFields({
 						name: '📌 Available Controls via Discord',
 						value:
-							'• `/play` - Search and queue content\n' +
+							'• `/play <query> autoplay:true` - Search and queue content (with optional autoplay)\n' +
+							'• `/skip` - Skip to next episode/movie in queue\n' +
+							'• `/previous` - Go to previous episode/movie in queue\n' +
 							'• `/pause` - Pause playback\n' +
 							'• `/resume` - Resume playback\n' +
-							'• `/skip` - Skip to next media\n' +
-							'**Also available:** Spacebar = Play/Pause, Arrow Keys = Seek',
+							'**Browser shortcuts:** Spacebar = Play/Pause, Arrow Keys = Seek ⏩/⏪',
 						inline: false,
 					});
 
@@ -85,11 +106,11 @@ class PlayCommand extends Command {
 					const firstMovie = results[0];
 
 					try {
-						logger.log(`Creating play queue for: ${firstMovie.title}`);
-						await PlexAPI.createPlayQueue(firstMovie.key);
+						logger.log(`Playing: ${firstMovie.title} (type: ${firstMovie.type})`);
+						await PlexAPI.playMedia(firstMovie.key);
 
 						embed.setFooter({
-							text: `✅ Queued: ${firstMovie.title}`,
+							text: `▶️ Playing: ${firstMovie.title}`,
 						});
 
 						// If autoplay requested, send play command via WebSocket

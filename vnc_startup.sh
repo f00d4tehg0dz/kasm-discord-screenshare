@@ -85,18 +85,6 @@ else
     echo "XDG Desktop Portal already running"
 fi
 
-# startup/21_plex_mpv_shim.sh
-# Configure plex-mpv-shim for Plex playback control
-echo "Configuring plex-mpv-shim..."
-
-# Create config directory for plex-mpv-shim
-mkdir -p /home/kasm-user/.config/plex-mpv-shim 2>/dev/null || true
-mkdir -p /home/kasm-default-profile/.config/plex-mpv-shim 2>/dev/null || true
-chmod 755 /home/kasm-user/.config/plex-mpv-shim 2>/dev/null || true
-chown -R 1000:0 /home/kasm-user/.config/plex-mpv-shim 2>/dev/null || true
-
-echo "plex-mpv-shim configured and ready to use"
-
 STARTUP_COMPLETE=0
 
 ######## FUNCTION DECLARATIONS ##########
@@ -206,98 +194,13 @@ function start_kasmvnc (){
 export DISPLAY=:1
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
 
-# Log startup for debugging
-echo "[$(date)] xstartup started, user: $USER, PID: $$" > /tmpplexcontrol/xstartup-debug.log
-
 # Start XFCE4 desktop environment
-if [ -x /usr/bin/xfce4-session ]; then
-    echo "[$(date)] Starting xfce4-session..." >> /tmp/xstartup-debug.log
-    # Start xfce4-session directly in the background
-    # Set DISPLAY explicitly to avoid issues
-    export DISPLAY=:1
-    /usr/bin/xfce4-session >> /tmp/xstartup-debug.log 2>&1 &
-    XFCE_PID=$!
-    echo "[$(date)] xfce4-session started with PID: $XFCE_PID" >> /tmp/xstartup-debug.log
+if [ -x /usr/bin/startxfce4 ]; then
+    /usr/bin/startxfce4 --replace
 else
-    echo "[$(date)] xfce4-session not found, falling back to xterm" >> /tmp/xstartup-debug.log
-    # Fallback to xterm if XFCE not available
-    xterm >> /tmp/xstartup-debug.log 2>&1 &
+    # Fallback to xterm if startxfce4 not available
+    xterm &
 fi
-
-# SSL certificate is now generated in main vnc_startup.sh before vncserver starts
-# No need to regenerate it here - it's already at $HOME/.vnc/self.pem with CN=localhost, discord.xxx.com and SANs
-echo "[$(date)] Using pre-generated SSL certificate at $HOME/.vnc/self.pem" >> /tmp/xstartup-debug.log
-
-if command -v plex-discord-server &> /dev/null; then
-    echo "[$(date)] Starting plex-discord-server instances..." >> /tmp/xstartup-debug.log
-    # Instance 1: Listen on 0.0.0.0:10100 with SSL for external WSS connections
-    # This instance creates the IPC server socket that port 10009 will connect to
-    plex-discord-server --host 0.0.0.0 --port 10100 --cert "$HOME/.vnc/self.pem" --key "$HOME/.vnc/self.pem" > /tmp/websocket-wss.log 2>&1 &
-    WS_PID_WSS=$!
-    echo "[$(date)] plex-discord-server WSS started with PID: $WS_PID_WSS (wss://0.0.0.0:10100)" >> /tmp/xstartup-debug.log
-
-    # Wait for IPC socket to be created before starting the WS instance
-    sleep 3
-    echo "[$(date)] Waited 3 seconds for IPC socket initialization..." >> /tmp/xstartup-debug.log
-
-    # Instance 2: Listen on 127.0.0.1:10009 without SSL for local Firefox extension (plain WS)
-    # This instance connects to the IPC socket created by port 10100 instance
-    plex-discord-server --host 127.0.0.1 --port 10009 > /tmp/websocket-ws.log 2>&1 &
-    WS_PID_WS=$!
-    echo "[$(date)] plex-discord-server WS started with PID: $WS_PID_WS (ws://127.0.0.1:10009)" >> /tmp/xstartup-debug.log
-
-    WS_PID=$WS_PID_WSS
-elif [ -x /home/kasm-user/.local/bin/plex-discord-server ]; then
-    echo "[$(date)] Starting plex-discord-server instances from local path..." >> /tmp/xstartup-debug.log
-    # Instance 1: Listen on 0.0.0.0:10100 with SSL for external WSS connections
-    # This instance creates the IPC server socket that port 10009 will connect to
-    python3 /home/kasm-user/.local/bin/plex-discord-server --host 0.0.0.0 --port 10100 --cert "$HOME/.vnc/self.pem" --key "$HOME/.vnc/self.pem" > /tmp/websocket-wss.log 2>&1 &
-    WS_PID_WSS=$!
-    echo "[$(date)] plex-discord-server WSS started with PID: $WS_PID_WSS (wss://0.0.0.0:10100)" >> /tmp/xstartup-debug.log
-
-    # Wait for IPC socket to be created before starting the WS instance
-    sleep 3
-    echo "[$(date)] Waited 3 seconds for IPC socket initialization..." >> /tmp/xstartup-debug.log
-
-    # Instance 2: Listen on 127.0.0.1:10009 without SSL for local Firefox extension (plain WS)
-    # This instance connects to the IPC socket created by port 10100 instance
-    python3 /home/kasm-user/.local/bin/plex-discord-server --host 127.0.0.1 --port 10009 > /tmp/websocket-ws.log 2>&1 &
-    WS_PID_WS=$!
-    echo "[$(date)] plex-discord-server WS started with PID: $WS_PID_WS (ws://127.0.0.1:10009)" >> /tmp/xstartup-debug.log
-
-    WS_PID=$WS_PID_WSS
-else
-    echo "[$(date)] ERROR: plex-discord-server not found in PATH or /home/kasm-user/.local/bin" >> /tmp/xstartup-debug.log
-fi
-
-# Verify plex-discord-server started successfully
-sleep 2
-if [ ! -z "$WS_PID" ] && kill -0 $WS_PID 2>/dev/null; then
-    echo "[$(date)] plex-discord-server is running successfully on port 10100 (WSS)" >> /tmp/xstartup-debug.log
-else
-    echo "[$(date)] ERROR: plex-discord-server failed to start. Check /tmp/websocket.log" >> /tmp/xstartup-debug.log
-fi
-
-# Start WebSocket SSL proxy on port 10101 (for external Discord bot connections via nginx)
-echo "[$(date)] Starting WebSocket SSL proxy on port 10101..." >> /tmp/xstartup-debug.log
-if [ -x /home/kasm-user/.local/bin/websocket-proxy ]; then
-    python3 /home/kasm-user/.local/bin/websocket-proxy > /tmp/websocket-proxy.log 2>&1 &
-    PROXY_PID=$!
-    echo "[$(date)] WebSocket SSL proxy started with PID: $PROXY_PID (wss://0.0.0.0:10101)" >> /tmp/xstartup-debug.log
-
-    # Verify proxy started
-    sleep 2
-    if kill -0 $PROXY_PID 2>/dev/null; then
-        echo "[$(date)] WebSocket SSL proxy is running successfully on port 10101" >> /tmp/xstartup-debug.log
-    else
-        echo "[$(date)] ERROR: WebSocket SSL proxy failed to start. Check /tmp/websocket-proxy.log" >> /tmp/xstartup-debug.log
-    fi
-else
-    echo "[$(date)] WARNING: websocket-proxy not found at /home/kasm-user/.local/bin/websocket-proxy" >> /tmp/xstartup-debug.log
-fi
-
-# Keep the script running for other services
-sleep infinity
 XSTARTUP
 	chmod +x $HOME/.vnc/xstartup
 
@@ -464,7 +367,7 @@ function start_audio_out (){
             mkdir -p /tmp/runtime-kasm-user/pulse
             [ -d /tmp/pipewire-0 ] && chmod 755 /tmp/pipewire-0 || true
             chmod 755 /tmp/runtime-kasm-user /tmp/runtime-kasm-user/pulse
-            chown 1000:0 /tmp/runtime-kasm-user /tmp/runtime-kasm-user/pulse
+            chown 1000:0 /tmp/runtime-kasm-user /tmp/runtime-kasm-user/pulse || true
             rm -f /tmp/pipewire-0.lock /tmp/pipewire-0/lock /tmp/runtime-kasm-user/pulse/native
 
             # Set environment variables for PipeWire
@@ -658,39 +561,6 @@ function start_printer (){
 	fi
 }
 
-
-function start_discord_rich_presence (){
-	if [[ ${KASM_SVC_DISCORD_RPC:-1} == 1 ]]; then
-		echo 'Starting Discord Rich Presence for Plex'
-
-		# Check if Discord RPC is already running
-		if ! pgrep -f "discord-rich-presence-plex" > /dev/null; then
-			# Create DRPP config directory if it doesn't exist
-			mkdir -p $HOME/.config/discord-rich-presence-plex
-
-			# Source DRPP environment if it exists
-			if [ -f "$HOME/.config/discord-rich-presence-plex/env" ]; then
-				source "$HOME/.config/discord-rich-presence-plex/env"
-			fi
-
-			# Start DRPP in background
-			python3 /opt/discord-rich-presence-plex/main.py &
-			KASM_PROCS['discord_rpc']=$!
-
-			if [[ $DEBUG == true ]]; then
-				echo -e "\n------------------ Started Discord Rich Presence for Plex  ----------------------------"
-				echo "Discord RPC PID: ${KASM_PROCS['discord_rpc']}";
-			fi
-		else
-			echo "Discord Rich Presence already running"
-			EXISTING_PID=$(pgrep -f "discord-rich-presence-plex" | head -1)
-			if [[ -n "$EXISTING_PID" ]]; then
-				KASM_PROCS['discord_rpc']=$EXISTING_PID
-			fi
-		fi
-	fi
-}
-
 function custom_startup (){
 	custom_startup_script=/dockerstartup/custom_startup.sh
 	if [ -f "$custom_startup_script" ]; then
@@ -738,7 +608,6 @@ if [[ $DEBUG == true ]]; then
 fi
 
 # Create cert for KasmVNC with proper CN=localhost and SANs
-# Delete old cert to force regeneration with correct parameters
 mkdir -p ${HOME}/.vnc
 rm -f ${HOME}/.vnc/self.pem
 
@@ -795,11 +664,8 @@ start_gamepad
 profile_size_check &
 start_webcam
 start_printer
-#start_discord_rich_presence
-
 
 STARTUP_COMPLETE=1
-
 
 ## log connect options
 echo -e "\n\n------------------ KasmVNC environment started ------------------"
@@ -899,11 +765,6 @@ do
 					# TODO: Needs work in python project to support auto restart
 					start_printer
 					sleep 1
-					;;
-				discord_rpc)
-					echo "Discord Rich Presence Service Failed, restarting"
-					start_discord_rich_presence
-					sleep 2
 					;;
 				custom_script)
 					echo "The custom startup script exited."

@@ -8,7 +8,7 @@ class WebSocketClient {
 	constructor(url) {
 		// Allow URL to be passed, use environment variable, or use default
 		if (!url) {
-			url = process.env.DISCORD_BOT_WS_URL || 'wss://discord.xxx.com/discord';
+			url = process.env.DISCORD_BOT_WS_URL || 'wss://discord.f00d4tehg0dz.me/discord';
 		}
 		this.url = url;
 		this.ws = null;

@@ -1,10 +1,12 @@
 // Connect to the local WebSocket server (port configurable via environment/storage)
-// Port 10009: Plain WS for browser clients (Firefox extension) - default
-// Port 10100: SSL WSS for Discord bot connections
+// Port 8764: Plain WS for browser clients (Firefox extension) - default
+// Port 8765: SSL WSS for Discord bot connections
 // Both instances share state through a shared Unix socket IPC mechanism
 
 // Get WebSocket URL from storage or use default
-let WS_URL = 'ws://localhost:10009/browser';
+// Use localhost for Firefox extension connections
+// Works better than 127.0.0.1 in Firefox extension context
+let WS_URL = 'ws://localhost:8764/browser';
 let ws = null;
 let reconnectAttempts = 0;
 let MAX_RECONNECT_ATTEMPTS = 5;
@@ -21,16 +23,8 @@ async function initializeConfig() {
       WS_URL = stored.WS_URL;
       console.log('[Plex Discord] Using stored WebSocket URL:', WS_URL);
     } else {
-      // Check if running in Kasm container (localhost) or external (use container IP)
-      const isLocalhost = window.location.hostname === 'localhost' ||
-                         window.location.hostname === '127.0.0.1' ||
-                         window.location.hostname.includes('192.168');
-      if (isLocalhost) {
-        WS_URL = 'ws://localhost:10009/browser';
-      } else {
-        // For external access, try to determine the internal IP
-        WS_URL = 'ws://localhost:10009/browser'; // Fallback, should be configured
-      }
+      // Use localhost for in-container Firefox access
+      WS_URL = 'ws://localhost:8764/browser';
       console.log('[Plex Discord] Using default WebSocket URL:', WS_URL);
     }
 

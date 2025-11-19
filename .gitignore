@@ -8,3 +8,16 @@
 /src/ubuntu
 /src
 /src/ubuntu
+.vnc_startup-production.sh
+vnc_startup-production.sh
+plex-firefox-ext/build/content.js
+plex-firefox-ext/build/manifest.json
+plex-firefox-ext/plex-discord-control@local.xpi
+plex-firefox-ext/build/background.js
+/home
+/kasm_home/.config
+/kasm_home/.local
+/kasm_home/.mozilla
+/kasm_home/.vnc
+/kasm_home/.pki
+/kasm_home

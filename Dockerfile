@@ -72,7 +72,7 @@ RUN wget -O discord.deb "https://discord.com/api/download?platform=linux&format=
     && rm discord.deb
 
 # Install Vesktop from package
-RUN wget -O vesktop.deb "https://github.com/Vencord/Vesktop/releases/download/v1.5.5/vesktop_1.5.5_amd64.deb" \
+RUN wget -O vesktop.deb "https://github.com/Vencord/Vesktop/releases/download/v1.6.1/vesktop_1.6.1_amd64.deb" \
     && apt-get install -y ./vesktop.deb \
     && rm vesktop.deb
 

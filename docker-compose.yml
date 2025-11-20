@@ -24,14 +24,17 @@ services:
       - VNC_VIEW_ONLY_PW=viewonlypassword
       - VNC_COL_DEPTH=24
       - VNC_RESOLUTION=1280x720
-      - MAX_FRAME_RATE=30
+      - MAX_FRAME_RATE=24
       - NO_VNC_PORT=6901
+      # Performance tuning
+      - KASMVNC_DYNAMIC_QUALITY_MIN=4
+      - KASMVNC_DYNAMIC_QUALITY_MAX=7
 
       # Kasm Services
       - KASM_SVC_AUDIO=1
       - KASM_SVC_AUDIO_INPUT=1
-      - KASM_SVC_UPLOADS=1
-      - KASM_SVC_GAMEPAD=1
+      - KASM_SVC_UPLOADS=0
+      - KASM_SVC_GAMEPAD=0
       - KASM_SVC_WEBCAM=0
       - KASM_SVC_PRINTER=0
       - KASM_SVC_DISCORD_RPC=1

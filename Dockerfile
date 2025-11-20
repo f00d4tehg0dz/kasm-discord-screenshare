@@ -214,8 +214,9 @@ RUN cp /home/kasm-user/Downloads/pipewire-screenaudio.xpi /home/kasm-default-pro
 RUN mkdir -p /run/dbus && chown -R 1000:0 /run/dbus && chmod 755 /run/dbus
 RUN mkdir -p /dev/snd && chown -R 1000:0 /dev/snd
 
-# Install WebSocket libraries
-RUN pip3 install --no-cache-dir --break-system-packages websockets aiohttp aiofiles
+# Install WebSocket libraries with pinned versions for stability
+# websockets 13.0+ changed the handler API - our code requires the new API
+RUN pip3 install --no-cache-dir --break-system-packages websockets==13.0 aiohttp==3.9.1 aiofiles==23.2.1
 
 RUN $STARTUPDIR/set_user_permission.sh $HOME
 

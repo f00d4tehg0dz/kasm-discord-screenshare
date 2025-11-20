@@ -1,11 +1,7 @@
 import Event from '../Structures/Event.js';
 import Logger from '../Utilities/Logger.js';
-import { hasPermission, getPermissionDeniedMessage } from '../Utilities/permissions.js';
 
 const logger = new Logger('InteractionEvent');
-
-// User IDs with permission bypass
-const ALLOWED_USERS = ['XXXXXXXX', 'YYYYYYYY']; // Replace with actual user IDs
 
 class InteractionCreateEvent extends Event {
 	constructor() {
@@ -25,11 +21,10 @@ class InteractionCreateEvent extends Event {
 					});
 				}
 
-				// Check permissions
-				if (!hasPermission(interaction, process.env.ROLE_ID, ALLOWED_USERS)) {
-					logger.warn(`Permission denied for user ${interaction.user.id} on command ${interaction.commandName}`);
-					return interaction.reply(getPermissionDeniedMessage());
-				}
+				// Allow any registered server member to use commands
+				// No additional permission checks needed - if they can execute a slash command, they're authorized
+				logger.log(`User ${interaction.user.tag} (${interaction.user.id}) is authorized (server member)`);
+
 
 				try {
 					logger.log(`Executing command: ${command.name} by ${interaction.user.tag}`);

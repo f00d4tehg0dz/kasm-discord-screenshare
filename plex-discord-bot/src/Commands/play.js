@@ -32,7 +32,7 @@ class PlayCommand extends Command {
 					required: false,
 				},
 			],
-			run: async (client, interaction) => {
+			run: async (_, interaction) => {
 				try {
 					await interaction.deferReply({ ephemeral: false });
 
@@ -113,34 +113,40 @@ class PlayCommand extends Command {
 							text: `▶️ Playing: ${firstMovie.title}`,
 						});
 
-						// If autoplay requested, send play command via WebSocket
-						if (autoplay) {
-							try {
-								const wsClient = await getWebSocketClient();
-								if (wsClient.isReady()) {
-									logger.log('Sending autoplay command');
-									await wsClient.sendCommand({ action: 'play' });
-									embed.addFields({
-										name: '▶️ Autoplay Enabled',
-										value: 'Playback started via Firefox extension',
-										inline: false,
-									});
-								} else {
-									logger.warn('WebSocket not ready for autoplay');
-									embed.addFields({
-										name: '⚠️ Autoplay Note',
-										value: 'Firefox extension not connected. Content queued - use `/resume` to start playback.',
-										inline: false,
-									});
-								}
-							} catch (wsError) {
-								logger.warn(`Autoplay failed: ${wsError.message}`);
+						// Always try to send play and fullscreen commands via WebSocket
+						try {
+							const wsClient = await getWebSocketClient();
+							if (wsClient.isReady()) {
+								logger.log('Sending play and fullscreen commands');
+
+								// Send play command
+								await wsClient.sendCommand({ action: 'play' });
+
+								// Send fullscreen command (Press 'f' key)
+								await wsClient.sendCommand({ action: 'fullscreen' });
+
 								embed.addFields({
-									name: '⚠️ Autoplay Failed',
-									value: `Content queued successfully. ${wsError.message}`,
+									name: '▶️ Playback Started',
+									value: 'Playing in fullscreen via Firefox extension',
+									inline: false,
+								});
+
+								logger.log('Playback and fullscreen activated successfully');
+							} else {
+								logger.warn('WebSocket not ready');
+								embed.addFields({
+									name: '⚠️ Connection Note',
+									value: 'Firefox extension not connected. Content queued - use `/resume` to start playback and press F for fullscreen.',
 									inline: false,
 								});
 							}
+						} catch (wsError) {
+							logger.warn(`WebSocket command failed: ${wsError.message}`);
+							embed.addFields({
+								name: '⚠️ Partial Control',
+								value: `Content queued successfully but automatic playback unavailable. ${wsError.message}`,
+								inline: false,
+							});
 						}
 
 						return interaction.editReply({ embeds: [embed] });

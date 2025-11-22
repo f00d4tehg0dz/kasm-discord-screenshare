@@ -1,12 +1,9 @@
-/src
 /workspaces-images
 /.history
 .env
 .claude/settings.local.json
 /PlexDiscordBot-main/.history
 /plex-firefox-ext/node_modules
-/src/ubuntu
-/src
 /src/ubuntu
 .vnc_startup-production.sh
 vnc_startup-production.sh
@@ -21,3 +18,8 @@ plex-firefox-ext/build/background.js
 /kasm_home/.vnc
 /kasm_home/.pki
 /kasm_home
+/src/alpine
+/src/kasmos
+/src/common
+/src/opensuse
+/src/oracle

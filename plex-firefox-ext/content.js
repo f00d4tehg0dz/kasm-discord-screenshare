@@ -298,10 +298,97 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
       };
 
       const handleFullscreen = () => {
-        const video = getPlayer();
-        if (video && video.requestFullscreen) {
-          video.requestFullscreen();
-          console.log('[Plex Discord] Fullscreen toggled');
+        // Try to find and click the fullscreen button in Plex UI
+        const fullscreenSelectors = [
+          // Exact match for Plex web player fullscreen button
+          'button[aria-label="Fullscreen"]',
+          'button[aria-label="fullscreen"]',
+          'button[aria-label="Exit Fullscreen"]',
+          'button[aria-label="exit fullscreen"]',
+          // Partial matches
+          'button[aria-label*="Fullscreen"]',
+          'button[aria-label*="fullscreen"]',
+          'button[aria-label*="Full Screen"]',
+          // Class-based selectors
+          'button[class*="FullscreenButton"]',
+          'button[class*="fullscreen"]',
+          // Title-based
+          'button[title*="Fullscreen"]',
+          'button[title*="fullscreen"]',
+          // SVG-based
+          'button:has(svg[class*="fullscreen"])',
+          // Generic role-based
+          '[role="button"][aria-label*="fullscreen"]',
+        ];
+
+        let fullscreenBtn = null;
+        for (let selector of fullscreenSelectors) {
+          try {
+            fullscreenBtn = document.querySelector(selector);
+            if (fullscreenBtn && fullscreenBtn.offsetHeight > 0) {
+              console.log('[Plex Discord] Found fullscreen button with selector:', selector);
+              break;
+            }
+          } catch (e) {
+            // Some selectors might fail, continue to next
+          }
+        }
+
+        if (fullscreenBtn && fullscreenBtn.offsetHeight > 0) {
+          console.log('[Plex Discord] Clicking fullscreen button');
+          try {
+            fullscreenBtn.focus();
+            fullscreenBtn.click();
+            fullscreenBtn.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true}));
+            fullscreenBtn.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, cancelable: true}));
+            fullscreenBtn.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
+            fullscreenBtn.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, cancelable: true}));
+            fullscreenBtn.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, cancelable: true}));
+            console.log('[Plex Discord] Fullscreen button clicked successfully');
+          } catch (e) {
+            console.error('[Plex Discord] Error clicking fullscreen button:', e);
+            // Try keyboard fallback
+            tryKeyboardFullscreen();
+          }
+        } else {
+          console.warn('[Plex Discord] Could not find visible fullscreen button, trying keyboard shortcut');
+          tryKeyboardFullscreen();
+        }
+
+        function tryKeyboardFullscreen() {
+          const video = getPlayer();
+          const targets = [document.body, document.documentElement, video];
+          let eventSent = false;
+
+          for (let target of targets) {
+            if (!target) continue;
+            try {
+              // Try 'f' key for fullscreen (standard HTML5 video shortcut)
+              const fKeyEvent = new KeyboardEvent('keydown', {
+                key: 'f',
+                code: 'KeyF',
+                keyCode: 70,
+                bubbles: true,
+                cancelable: true
+              });
+              target.dispatchEvent(fKeyEvent);
+              console.log('[Plex Discord] Sent F key event to', target.nodeName);
+              eventSent = true;
+              break;
+            } catch (e) {
+              console.debug('[Plex Discord] Failed to dispatch to', target.nodeName, e.message);
+            }
+          }
+
+          if (!eventSent && video && video.requestFullscreen) {
+            // Last resort: use native fullscreen API
+            try {
+              video.requestFullscreen();
+              console.log('[Plex Discord] Used native requestFullscreen API');
+            } catch (e) {
+              console.error('[Plex Discord] Failed to request fullscreen:', e.message);
+            }
+          }
         }
       };
 

@@ -117,26 +117,31 @@ class PlayCommand extends Command {
 						try {
 							const wsClient = await getWebSocketClient();
 							if (wsClient.isReady()) {
-								logger.log('Sending play and fullscreen commands');
-
+								logger.log('Sending play command');
 								// Send play command
 								await wsClient.sendCommand({ action: 'play' });
+								logger.log('Play command sent successfully');
 
-								// Send fullscreen command (Press 'f' key)
+								// Add a small delay before fullscreen to ensure video element is ready
+								await new Promise(resolve => setTimeout(resolve, 500));
+
+								logger.log('Sending fullscreen command');
+								// Send fullscreen command - extension will click fullscreen button or press F
 								await wsClient.sendCommand({ action: 'fullscreen' });
+								logger.log('Fullscreen command sent successfully');
 
 								embed.addFields({
 									name: '▶️ Playback Started',
-									value: 'Playing in fullscreen via Firefox extension',
+									value: 'Video playing in fullscreen via Firefox extension',
 									inline: false,
 								});
 
 								logger.log('Playback and fullscreen activated successfully');
 							} else {
-								logger.warn('WebSocket not ready');
+								logger.warn('WebSocket not ready - extension not connected');
 								embed.addFields({
 									name: '⚠️ Connection Note',
-									value: 'Firefox extension not connected. Content queued - use `/resume` to start playback and press F for fullscreen.',
+									value: 'Firefox extension not connected. Content queued to Plex - use `/resume` to start playback or press F for fullscreen.',
 									inline: false,
 								});
 							}
@@ -144,7 +149,7 @@ class PlayCommand extends Command {
 							logger.warn(`WebSocket command failed: ${wsError.message}`);
 							embed.addFields({
 								name: '⚠️ Partial Control',
-								value: `Content queued successfully but automatic playback unavailable. ${wsError.message}`,
+								value: `Content queued to Plex successfully, but Firefox extension control unavailable. Manual playback required.`,
 								inline: false,
 							});
 						}

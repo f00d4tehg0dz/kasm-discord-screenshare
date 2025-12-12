@@ -1,6 +1,6 @@
 #kasm_user
 #password
-ARG BASE_TAG="develop"
+ARG BASE_TAG="1.17.0"
 ARG BASE_IMAGE="core-ubuntu-noble"
 FROM kasmweb/$BASE_IMAGE:$BASE_TAG
 

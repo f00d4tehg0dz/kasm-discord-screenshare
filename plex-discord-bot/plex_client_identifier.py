@@ -280,7 +280,7 @@ def main(verbose):
     print('-' * 60)
 
     # List of IPs to try
-    ips_to_try = ['192.168.50.80', '127.0.0.1', 'localhost']
+    ips_to_try = ['192.168.50.63', '192.168.50.80', '127.0.0.1', 'localhost']
 
     sessions_found = False
     for server_ip in ips_to_try:

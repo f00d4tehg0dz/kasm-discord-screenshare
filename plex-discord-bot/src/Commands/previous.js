@@ -30,7 +30,7 @@ class PreviousCommand extends Command {
 										'Cannot connect to Plex browser extension.\n\n' +
 										'**Requirements:**\n' +
 										'• Firefox with Plex Discord Control extension installed\n' +
-										'• Navigate to your Plex server (http://192.168.50.80:32400/web)\n' +
+										'• Navigate to your Plex server \n' +
 										'• Keep Firefox window open'
 									)
 									.setFooter({ text: 'WebSocket connection required' })
@@ -49,7 +49,7 @@ class PreviousCommand extends Command {
 										'WebSocket connection not ready.\n\n' +
 										'**Requirements:**\n' +
 										'• Firefox with Plex Discord Control extension installed\n' +
-										'• Navigate to your Plex server (http://192.168.50.80:32400/web)\n' +
+										'• Navigate to your Plex server \n' +
 										'• Keep Firefox window open'
 									)
 									.setFooter({ text: 'WebSocket connection required' })

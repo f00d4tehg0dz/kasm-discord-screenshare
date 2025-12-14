@@ -1,126 +1,99 @@
 #!/bin/bash
-### every exit != 0 fails the script
-set -e
+### Plex Discord Control - Additional Startup Script
+### This runs AFTER the core vnc_startup.sh has started VNC and audio
+### It only adds Plex-specific customizations
 
-no_proxy="localhost,127.0.0.1"
-
-# dict to store processes - REQUIRED for KASM_PROCS associative array
-declare -A KASM_PROCS
+echo "=== Plex Discord Control Startup ==="
 
 # Create Discord IPC socket directory for rich presence
 mkdir -p /tmp/runtime-kasm-user/discord-ipc-0 2>/dev/null || true
 chmod 755 /tmp/runtime-kasm-user/discord-ipc-0 2>/dev/null || true
 
+# Set up DBus session address for Flatpak and desktop apps
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
 
-STARTUP_COMPLETE=0
+# Ensure XDG runtime directory exists
+export XDG_RUNTIME_DIR="/tmp/runtime-kasm-user"
+mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
+chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
 
-######## FUNCTION DECLARATIONS ##########
+# --- START PIPEWIRE FOR AUDIO ---
+echo "Starting PipeWire audio system..."
 
-## print out help
-function help (){
-	echo "
-		USAGE:
+# Create PipeWire directories
+export PIPEWIRE_RUNTIME_DIR="/tmp/runtime-kasm-user"
+export PULSE_RUNTIME_PATH="/tmp/runtime-kasm-user/pulse"
+export PULSE_SERVER="unix:${PULSE_RUNTIME_PATH}/native"
 
-		OPTIONS:
-		-w, --wait      (default) keeps the UI and the vncserver up until SIGINT or SIGTERM will received
-		-s, --skip      skip the vnc startup and just execute the assigned command.
-		                example: docker run kasmweb/core --skip bash
-		-d, --debug     enables more detailed startup output
-		                e.g. 'docker run kasmweb/core --debug bash'
-		-h, --help      print out this help
-		"
-}
+mkdir -p "$PULSE_RUNTIME_PATH" 2>/dev/null || true
+mkdir -p /tmp/pipewire-0 2>/dev/null || true
+chmod 755 /tmp/pipewire-0 2>/dev/null || true
+chmod 755 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+chmod 755 "$PULSE_RUNTIME_PATH" 2>/dev/null || true
+chown -R 1000:0 "$XDG_RUNTIME_DIR" 2>/dev/null || true
 
-trap cleanup SIGINT SIGTERM SIGQUIT SIGHUP ERR
+# Kill any existing PipeWire processes
+pkill -f pipewire 2>/dev/null || true
+pkill -f wireplumber 2>/dev/null || true
+sleep 1
 
-function pull_profile (){
-	if [ ! -z "$KASM_PROFILE_LDR" ]; then
-		if [ -z "$kasm_profile_sync_found" ]; then
-			echo >&2 "Profile sync not available"
-			sleep 3
-			http_proxy="" https_proxy="" curl -k "https://${KASM_API_HOST}:${KASM_API_PORT}/api/set_kasm_session_status?token=${KASM_API_JWT}" -H 'Content-Type: application/json' -d '{"status": "running"}'
-			return
-		fi
+# Clean up old sockets
+rm -f /tmp/pipewire-0.lock /tmp/pipewire-0/lock "$PULSE_RUNTIME_PATH/native" 2>/dev/null || true
 
-		echo "Downloading and unpacking user profile from object storage."
-		set +e
-		if [[ $DEBUG == true ]]; then
-			http_proxy="" https_proxy="" /usr/bin/kasm-profile-sync --download /home/kasm-user --insecure --remote ${KASM_API_HOST} --port ${KASM_API_PORT} -c ${KASM_PROFILE_CHUNK_SIZE} --token ${KASM_API_JWT} --verbose
-		else
-			http_proxy="" https_proxy="" /usr/bin/kasm-profile-sync --download /home/kasm-user --insecure --remote ${KASM_API_HOST} --port ${KASM_API_PORT} -c ${KASM_PROFILE_CHUNK_SIZE} --token ${KASM_API_JWT}
-		fi
-		PROCESS_SYNC_EXIT_CODE=$?
-		set -e
-		if (( PROCESS_SYNC_EXIT_CODE > 1 )); then
-			echo "Profile-sync failed with a non-recoverable error. See server side logs for more details."
-			exit 1
-		fi
-		echo "Profile load complete."
-		# Update the status of the container to running
-		sleep 3
-		http_proxy="" https_proxy="" curl -k "https://${KASM_API_HOST}:${KASM_API_PORT}/api/set_kasm_session_status?token=${KASM_API_JWT}" -H 'Content-Type: application/json' -d '{"status": "running"}'
+# Start PipeWire daemon
+echo "Starting PipeWire daemon..."
+PIPEWIRE_RUNTIME_DIR=/tmp/runtime-kasm-user pipewire > /tmp/pipewire.log 2>&1 &
+sleep 2
 
-	fi
-}
+# Start WirePlumber (session manager)
+echo "Starting WirePlumber..."
+PIPEWIRE_RUNTIME_DIR=/tmp/runtime-kasm-user wireplumber > /tmp/wireplumber.log 2>&1 &
+sleep 2
 
-## correct forwarding of shutdown signal
-function cleanup () {
-    kill -s SIGTERM $!
-    exit 0
-}
+# Start PipeWire-Pulse (PulseAudio compatibility layer)
+echo "Starting PipeWire-Pulse..."
+PIPEWIRE_RUNTIME_DIR=/tmp/runtime-kasm-user PULSE_RUNTIME_PATH=/tmp/runtime-kasm-user/pulse pipewire-pulse > /tmp/pipewire-pulse.log 2>&1 &
+sleep 2
 
-function start_kasmvnc (){
-	if [[ $DEBUG == true ]]; then
-	  echo -e "\n------------------ Start KasmVNC Server ------------------------"
-	fi
+# Wait for PulseAudio socket
+echo "Waiting for PulseAudio socket..."
+MAX_RETRIES=15
+RETRY=0
+while [ ! -S "$PULSE_RUNTIME_PATH/native" ] && [ $RETRY -lt $MAX_RETRIES ]; do
+    echo "Waiting for pulse socket... ($RETRY/$MAX_RETRIES)"
+    sleep 1
+    RETRY=$((RETRY + 1))
+done
 
-	DISPLAY_NUM=$(echo $DISPLAY | grep -Po ':\d+')
+if [ -S "$PULSE_RUNTIME_PATH/native" ]; then
+    echo "✓ PulseAudio socket ready at $PULSE_RUNTIME_PATH/native"
+else
+    echo "⚠ WARNING: PulseAudio socket not ready after ${MAX_RETRIES}s - audio may not work"
+fi
 
-	if [[ $STARTUP_COMPLETE == 0 ]]; then
-	    vncserver -kill $DISPLAY &> $STARTUPDIR/vnc_startup.log \
-	    || rm -rfv /tmp/.X*-lock /tmp/.X11-unix &> $STARTUPDIR/vnc_startup.log \
-	    || echo "no locks present"
-	fi
+# --- FIREFOX EXTENSION SETUP ---
+echo "Installing Plex Discord Control Firefox Extension..."
 
-	rm -rf $HOME/.vnc/*.pid
+FIREFOX_PROFILE="$HOME/.mozilla/firefox/kasm"
+EXT_FOLDER="$FIREFOX_PROFILE/extensions/plex-discord-control@local"
+EXT_XPI_PATH="/app/plex-firefox-ext/plex-discord-control@local.xpi"
 
+if [ -f "$EXT_XPI_PATH" ]; then
+    echo "Found Firefox extension XPI at: $EXT_XPI_PATH"
 
-	chmod +x $HOME/.vnc/xstartup
+    # Create extension directory
+    mkdir -p "$EXT_FOLDER"
+    rm -rf "$EXT_FOLDER"/* 2>/dev/null || true
 
-	# Install prebuilt Firefox Extension (.xpi file)
-	echo "Installing Plex Discord Control Firefox Extension..."
+    # Unpack the .xpi file
+    unzip -q "$EXT_XPI_PATH" -d "$EXT_FOLDER" 2>/dev/null || true
 
-	# Firefox extensions must be unpacked into a folder structure, not left as .xpi files
-	FIREFOX_PROFILE="$HOME/.mozilla/firefox/kasm"
-	EXT_FOLDER="$FIREFOX_PROFILE/extensions/plex-discord-control@local"
-	EXT_XPI_PATH="/app/plex-firefox-ext/plex-discord-control@local.xpi"
+    if [ -f "$EXT_FOLDER/manifest.json" ]; then
+        echo "✓ Firefox Extension unpacked: $EXT_FOLDER"
 
-	if [ -f "$EXT_XPI_PATH" ]; then
-		echo "Found Firefox extension XPI at: $EXT_XPI_PATH"
-
-		# Create extension directory
-		mkdir -p "$EXT_FOLDER"
-
-		# Remove old extension files to avoid permission issues on re-extraction
-		rm -rf "$EXT_FOLDER"/* 2>/dev/null || true
-
-		# Unpack the .xpi file (it's just a ZIP archive) into the extension folder
-		unzip -q "$EXT_XPI_PATH" -d "$EXT_FOLDER"
-
-		# List unpacked files
-		echo "Unpacked files in $EXT_FOLDER:"
-		ls -la "$EXT_FOLDER" 2>/dev/null || echo "Failed to list unpacked files"
-
-		if [ -f "$EXT_FOLDER/manifest.json" ]; then
-			echo "✓ Firefox Extension unpacked: $EXT_FOLDER"
-
-			# Create/update extensions.json metadata file to register the extension
-			# Firefox requires extensions to be explicitly registered in extensions.json
-			EXT_JSON="$FIREFOX_PROFILE/extensions.json"
-
-			# Create extensions.json with proper extension metadata
-			# Firefox requires absolute paths for unpacked extensions
-			cat > "$EXT_JSON" << EXTJSON
+        # Create extensions.json
+        EXT_JSON="$FIREFOX_PROFILE/extensions.json"
+        cat > "$EXT_JSON" << EXTJSON
 {
   "schemaVersion": 4,
   "addons": [
@@ -137,37 +110,33 @@ function start_kasmvnc (){
   ]
 }
 EXTJSON
+        echo "✓ Firefox Extension registered"
+    else
+        echo "⚠ Warning: Failed to unpack extension"
+    fi
+else
+    echo "⚠ Warning: Extension XPI not found at $EXT_XPI_PATH"
+fi
 
-			echo "✓ Firefox Extension registered in extensions.json"
-		else
-			echo "⚠ Error: Failed to unpack .xpi file or manifest.json not found"
-		fi
-	else
-		echo "⚠ Warning: Prebuilt .xpi file not found at $EXT_XPI_PATH"
-		echo "  Extension will not be available"
-	fi
-
-	# Configure Firefox for WebSocket connections and certificate handling
-	# Create user.js which Firefox reads BEFORE applying default preferences
-	FIREFOX_USERJS="$FIREFOX_PROFILE/user.js"
-
-	# Create user.js with settings for WebSocket connections and self-signed cert handling
-	cat > "$FIREFOX_USERJS" << 'USERJS'
+# Configure Firefox for WebSocket connections
+FIREFOX_USERJS="$FIREFOX_PROFILE/user.js"
+mkdir -p "$FIREFOX_PROFILE"
+cat > "$FIREFOX_USERJS" << 'USERJS'
 // Allow connections without strict HTTPS requirements
 user_pref("dom.security.https_only_mode", false);
 user_pref("security.mixed_content.block_active_content", false);
-// Disable OCSP (Online Certificate Status Protocol) checking which can cause issues with self-signed certs
 user_pref("security.OCSP.enabled", 0);
 user_pref("security.cert_pinning.enforcement_level", 0);
-// Allow insecure connections to localhost (needed for self-signed certs in development)
 user_pref("security.fileuri.strict_origin_policy", false);
+// PipeWire audio support
+user_pref("media.cubeb.backend", "pipewire");
+user_pref("media.cubeb.sandbox", false);
 USERJS
+echo "✓ Firefox configured for WebSocket and audio"
 
-	echo "✓ Firefox user.js configured for WebSocket and self-signed certificate support"
-
-	# Create profiles.ini to define the Firefox profile
-	mkdir -p "$HOME/.mozilla/firefox"
-	cat > "$HOME/.mozilla/firefox/profiles.ini" << 'PROFILES'
+# Create Firefox profiles.ini
+mkdir -p "$HOME/.mozilla/firefox"
+cat > "$HOME/.mozilla/firefox/profiles.ini" << 'PROFILES'
 [Profile0]
 Name=kasm
 IsRelative=1
@@ -175,189 +144,22 @@ Path=kasm
 Default=1
 PROFILES
 
-	# Also install to kasm-default-profile if it exists
-	if [ -d /home/kasm-default-profile ] && [ -f "$EXT_XPI_PATH" ]; then
-		EXT_DEFAULT_PATH="/home/kasm-default-profile/.mozilla/firefox/kasm/extensions/plex-discord-control@local.xpi"
-		mkdir -p "$(dirname "$EXT_DEFAULT_PATH")"
-		cp "$EXT_XPI_PATH" "$EXT_DEFAULT_PATH" 2>/dev/null || true
-	fi
+# --- START CUSTOM STARTUP SCRIPTS ---
+echo "Starting Plex Discord custom startup scripts..."
 
-
-	if [[ $DEBUG == true ]]; then
-	  echo -e "\n------------------ Started Websockify  ----------------------------"
-	  echo "Websockify PID: ${KASM_PROCS['kasmvnc']}";
-	fi
-}
-
-function custom_startup_discord (){
-	custom_startup_script=/dockerstartup/custom_startup.sh
-	if [ -f "$custom_startup_script" ]; then
-		if [ ! -x "$custom_startup_script" ]; then
-			echo "${custom_startup_script}: not executable, exiting"
-			exit 1
-		fi
-
-		"$custom_startup_script" &
-		KASM_PROCS['custom_startup_discord']=$!
-	fi
-}
-
-function custom_startup_plex_discord (){
-	custom_startup_script=/dockerstartup/custom_startup-plex-discord.sh
-	if [ -f "$custom_startup_script" ]; then
-		if [ ! -x "$custom_startup_script" ]; then
-			echo "${custom_startup_script}: not executable, exiting"
-			exit 1
-		fi
-
-		"$custom_startup_script" &
-		KASM_PROCS['custom_startup_plex_discord']=$!
-	fi
-}
-
-############ END FUNCTION DECLARATIONS ###########
-
-if [[ $1 =~ -h|--help ]]; then
-    help
-    exit 0
+# Start Plex Discord server
+if [ -x /dockerstartup/custom_startup-plex-discord.sh ]; then
+    echo "Starting custom_startup-plex-discord.sh..."
+    /dockerstartup/custom_startup-plex-discord.sh &
 fi
 
-if [[ ${KASM_DEBUG:-0} == 1 ]]; then
-    echo -e "\n\n------------------ DEBUG KASM STARTUP -----------------"
-    export DEBUG=true
-    set -x
+# Start Discord custom startup (if exists)
+if [ -x /dockerstartup/custom_startup.sh ]; then
+    echo "Starting custom_startup.sh..."
+    /dockerstartup/custom_startup.sh &
 fi
 
-# Syncronize user-space loaded persistent profiles
-pull_profile
+echo "=== Plex Discord Control Startup Complete ==="
 
-# should also source $STARTUPDIR/generate_container_user
-if [ -f $HOME/.bashrc ]; then
-    source $HOME/.bashrc
-fi
-
-## resolve_vnc_connection
-VNC_IP=$(hostname -i)
-if [[ $DEBUG == true ]]; then
-    echo "IP Address used for external bind: $VNC_IP"
-fi
-
-# Create cert for KasmVNC with proper CN=localhost and SANs
-mkdir -p ${HOME}/.vnc
-rm -f ${HOME}/.vnc/self.pem
-
-# Generate SSL certificate with CN=localhost (for internal connections) and SANs for all hostnames
-# The certificate needs to work for:
-# 1. External: discord.xxx.com (through nginx)
-# 2. Internal: kasmdiscordplexcontrol (nginx upstream), localhost, 127.0.0.1 (local connections)
-echo "Generating SSL certificate with SANs for all connection methods..."
-openssl req -x509 -nodes -days 3650 -newkey rsa:2048 -keyout ${HOME}/.vnc/self.pem -out ${HOME}/.vnc/self.pem \
-    -subj "/C=US/ST=VA/L=None/O=None/OU=Plex/CN=kasmdiscordplexcontrol/emailAddress=none@none.none" \
-    -addext "subjectAltName=DNS:kasmdiscordplexcontrol,DNS:discord.xxx.com,DNS:localhost,DNS:127.0.0.1,IP:127.0.0.1" 2>&1
-chmod 600 ${HOME}/.vnc/self.pem
-echo "SSL certificate generated at ${HOME}/.vnc/self.pem"
-
-# first entry is control, second is view (if only one is valid for both)
-mkdir -p "$HOME/.vnc"
-PASSWD_PATH="$HOME/.kasmpasswd"
-if [[ -f $PASSWD_PATH ]]; then
-    echo -e "\n---------  purging existing VNC password settings  ---------"
-    rm -f $PASSWD_PATH
-fi
-
-echo -e "${VNC_PW}\n${VNC_PW}\n" | kasmvncpasswd -u kasm_user -wo
-echo -e "${VNC_PW}\n${VNC_PW}\n" | kasmvncpasswd -u kasm_viewer -r
-chmod 600 $PASSWD_PATH
-
-# Start KasmVNC server
-echo "Starting KasmVNC server..."
-DISPLAY=:1
-NO_VNC_PORT=${NO_VNC_PORT:-6901}
-VNC_COL_DEPTH=${VNC_COL_DEPTH:-24}
-VNC_RESOLUTION=${VNC_RESOLUTION:-1920x1080}
-MAX_FRAME_RATE=${MAX_FRAME_RATE:-24}
-KASM_VNC_PATH=${KASM_VNC_PATH:-/usr/share/kasmvnc}
-
-# Kill any existing VNC server
-vncserver -kill $DISPLAY 2>/dev/null || true
-rm -rf /tmp/.X*-lock /tmp/.X11-unix 2>/dev/null || true
-
-# Start VNC server
-vncserver $DISPLAY \
-    -depth $VNC_COL_DEPTH \
-    -geometry $VNC_RESOLUTION \
-    -websocketPort $NO_VNC_PORT \
-    -httpd ${KASM_VNC_PATH}/www \
-    -FrameRate=$MAX_FRAME_RATE \
-    -interface 0.0.0.0 \
-    -BlacklistThreshold=0 \
-    -FreeKeyMappings
-
-# Get VNC PID
-DISPLAY_NUM=$(echo $DISPLAY | grep -Po ':\d+')
-KASM_PROCS['kasmvnc']=$(cat $HOME/.vnc/*${DISPLAY_NUM}.pid 2>/dev/null || echo "")
-
-# Disable screensaver
-xset -dpms 2>/dev/null || true
-xset s off 2>/dev/null || true
-
-STARTUP_COMPLETE=1
-
-## log connect options
-echo -e "\n\n------------------ KasmVNC environment started ------------------"
-
-# tail vncserver logs
-sleep 2
-tail -f $HOME/.vnc/*$DISPLAY.log 2>/dev/null &
-
-KASMIP=$(hostname -i)
-echo "Kasm User ${KASM_USER}(${KASM_USER_ID}) started container id ${HOSTNAME} with local IP address ${KASMIP}"
-
-# start custom startup script
-custom_startup_plex_discord
-custom_startup_discord
-# Monitor Kasm Services
-sleep 3
-while :
-do
-	for process in "${!KASM_PROCS[@]}"; do
-		# Skip if PID is empty or invalid
-		if [[ -z "${KASM_PROCS[$process]}" ]] || [[ ! "${KASM_PROCS[$process]}" =~ ^[0-9]+$ ]]; then
-			echo "Invalid PID for $process: ${KASM_PROCS[$process]}, skipping check"
-			continue
-		fi
-		
-		if ! kill -0 "${KASM_PROCS[$process]}" 2>/dev/null ; then
-
-			# If DLP Policy is set to fail secure, default is to be resilient
-			if [[ ${DLP_PROCESS_FAIL_SECURE:-0} == 1 ]]; then
-				exit 1
-			fi
-
-			case $process in
-				kasmvnc)
-					if [ "$KASMVNC_AUTO_RECOVER" = true ] ; then
-						echo "KasmVNC crashed, restarting"
-						start_kasmvnc
-						sleep 2
-					else
-						echo "KasmVNC crashed, exiting container"
-						exit 1
-					fi
-					;;
-				custom_script)
-					echo "The custom startup script exited."
-					# custom startup scripts track the target process on their own, they should not exit
-					custom_startup_plex_discord
-					sleep 1
-					;;
-				*)
-					echo "Unknown Service: $process"
-					;;
-			esac
-		fi
-	done
-	sleep 3
-done
-
-echo "Kasm container monitoring loop ended unexpectedly"
+# Pass control to the next script in the ENTRYPOINT chain
+exec "$@"

@@ -47,6 +47,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     VNC_RESOLUTION=1920x1080 \
     SDL_GAMECONTROLLERCONFIG="030000005e040000be02000014010000,XInput Controller,platform:Linux,a:b0,b:b1,x:b2,y:b3,back:b8,guide:b16,start:b9,leftstick:b10,rightstick:b11,leftshoulder:b4,rightshoulder:b5,dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:b6,righttrigger:b7"
 
+# PipeWire environment variables (ENABLE AUDIO)
+ENV START_PIPEWIRE=1 \
+    XDG_RUNTIME_DIR="/tmp/runtime-kasm-user" \
+    PIPEWIRE_RUNTIME_DIR="/tmp/runtime-kasm-user" \
+    PULSE_RUNTIME_PATH="/tmp/runtime-kasm-user/pulse" \
+    PULSE_SERVER="unix:/tmp/runtime-kasm-user/pulse/native" \
+    PIPEWIRE_LATENCY="512/48000"
+
 ENV INST_SCRIPTS="/ubuntu/install/tools/install_tools_deluxe.sh \
                   /ubuntu/install/misc/install_tools.sh \
                   /ubuntu/install/chrome/install_chrome.sh \
@@ -74,6 +82,33 @@ RUN \
 COPY ./workspaces-images/src/ubuntu/install/discord/custom_startup.sh $STARTUPDIR/custom_startup.sh
 RUN chmod +x $STARTUPDIR/custom_startup.sh
 RUN chmod 755 $STARTUPDIR/custom_startup.sh
+
+# Install VA-API, PipeWire and audio/video dependencies
+RUN apt-get update && apt-get install -y \
+    libva2 vainfo libva-drm2 libva-x11-2 i965-va-driver mesa-va-drivers \
+    gawk jq \
+    pipewire \
+    pipewire-audio-client-libraries \
+    pipewire-pulse \
+    pipewire-alsa \
+    pipewire-jack \
+    wireplumber \
+    libpipewire-0.3-0 \
+    libspa-0.2-modules \
+    pulseaudio-utils \
+    alsa-utils \
+    gstreamer1.0-pipewire \
+    ffmpeg \
+    v4l-utils \
+    python3 python3-pip python3-venv git \
+    flatpak xdg-desktop-portal xdg-desktop-portal-gtk fuse3 bubblewrap libfuse2 \
+    && apt-get clean
+
+# Create PipeWire runtime directories
+RUN mkdir -p /tmp/runtime-kasm-user/pulse /tmp/pipewire-0 /run/user/1000 \
+    && chmod 755 /tmp/runtime-kasm-user /tmp/runtime-kasm-user/pulse /tmp/pipewire-0 \
+    && chown -R 1000:0 /tmp/runtime-kasm-user /run/user/1000 \
+    && chmod 1777 /tmp
 
 # Install Vesktop from package (Discord and VLC are installed via scripts)
 RUN wget -O vesktop.deb "https://github.com/Vencord/Vesktop/releases/download/v1.6.1/vesktop_1.6.1_amd64.deb" \
@@ -106,13 +141,10 @@ RUN mkdir -p /home/kasm-user/Desktop \
     && chown -R 1000:0 /home/kasm-user \
     && chmod -R 755 /home/kasm-user/Desktop
 
-COPY ./workspaces-core-images-develop/src/common/startup_scripts/vnc_startup.sh $STARTUPDIR/vnc_startup.sh
+# Use the custom vnc_startup.sh with PipeWire and Plex integration
+COPY ./vnc_startup.sh.bak $STARTUPDIR/vnc_startup.sh
 # Fix Windows line endings
 RUN sed -i 's/\r$//' $STARTUPDIR/vnc_startup.sh && chmod +x $STARTUPDIR/vnc_startup.sh
-
-COPY ./vnc_with_plex_startup.sh $STARTUPDIR/vnc_with_plex_startup.sh
-# Fix Windows line endings
-RUN sed -i 's/\r$//' $STARTUPDIR/vnc_with_plex_startup.sh && chmod +x $STARTUPDIR/vnc_with_plex_startup.sh
 
 # Copy custom startup script for Plex Discord integration
 COPY ./custom_startup-plex-discord.sh $STARTUPDIR/custom_startup-plex-discord.sh
@@ -120,8 +152,26 @@ COPY ./custom_startup-plex-discord.sh $STARTUPDIR/custom_startup-plex-discord.sh
 RUN sed -i 's/\r$//' $STARTUPDIR/custom_startup-plex-discord.sh && chmod +x $STARTUPDIR/custom_startup-plex-discord.sh
 
 # Install Python dependencies for plex-discord-server
-RUN apt-get update && apt-get install -y python3 python3-pip \
-    && pip3 install --no-cache-dir --break-system-packages websockets==13.0 aiohttp==3.9.1 aiofiles==23.2.1
+RUN pip3 install --no-cache-dir --break-system-packages websockets==13.0 aiohttp==3.9.1 aiofiles==23.2.1
+
+# Install Discord .deb as fallback (more stable in containers than Flatpak)
+RUN curl -L -o /tmp/discord.deb "https://discord.com/api/download?platform=linux&format=deb" \
+    && apt-get install -y /tmp/discord.deb \
+    && rm /tmp/discord.deb
+
+# Configure Discord to use --no-sandbox by default
+RUN mkdir -p /home/kasm-user/.config/discord \
+    && echo '{"SKIP_HOST_UPDATE": true}' > /home/kasm-user/.config/discord/settings.json \
+    && chown -R 1000:0 /home/kasm-user/.config/discord
+
+# Modify Discord .desktop file to use --no-sandbox
+RUN if [ -f /usr/share/applications/discord.desktop ]; then \
+        sed -i 's|Exec=/usr/share/discord/Discord|Exec=/usr/share/discord/Discord --no-sandbox|g' /usr/share/applications/discord.desktop; \
+    fi
+
+# Create Discord desktop shortcut
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Discord\nComment=Discord Chat\nExec=/usr/share/discord/Discord --no-sandbox\nIcon=/usr/share/discord/discord.png\nType=Application\nCategories=Network;InstantMessaging;\nTerminal=false\n' > $HOME/Desktop/discord.desktop \
+    && chmod +x $HOME/Desktop/discord.desktop
 
 # Copy plex-discord-server scripts
 RUN mkdir -p /home/kasm-user/.local/bin
@@ -137,20 +187,25 @@ RUN sed -i 's/\r$//' /home/kasm-user/.local/bin/plex-discord-server \
 RUN mkdir -p /app/plex-firefox-ext
 COPY ./plex-firefox-ext/plex-discord-control@local.xpi /app/plex-firefox-ext/
 
-### Create startup log files (from core image)
+### Create startup log files and fix permissions
+# Don't reset all file permissions - base image already has correct perms for binaries
 RUN touch $STARTUPDIR/wm.log \
     && touch $STARTUPDIR/window_manager_startup.log \
     && touch $STARTUPDIR/vnc_startup.log \
-    && touch $STARTUPDIR/vnc_startup_with_plex_startup.log \
     && touch $STARTUPDIR/no_vnc_startup.log \
-    && chown -R root:root $STARTUPDIR \
-    && find $STARTUPDIR -type d -exec chmod 755 {} \; \
-    && find $STARTUPDIR -type f -exec chmod 644 {} \; \
+    && chmod 666 $STARTUPDIR/*.log 2>/dev/null || true \
     && find $STARTUPDIR -type f -iname "*.sh" -exec chmod 755 {} \; \
     && find $STARTUPDIR -type f -iname "*.py" -exec chmod 755 {} \; \
-    && find $STARTUPDIR -type f -iname "*.log" -exec chmod 666 {} \; \
     && mkdir -p $STARTUPDIR/kasmrx/Downloads \
-    && chown 1000:1000 $STARTUPDIR/kasmrx/Downloads
+    && chown 1000:1000 $STARTUPDIR/kasmrx/Downloads \
+    && chmod 755 $STARTUPDIR/jsmpeg/kasm_audio_out-linux 2>/dev/null || true \
+    && chmod 755 $STARTUPDIR/upload_server/kasm_upload_server 2>/dev/null || true \
+    && chmod 755 $STARTUPDIR/audio_input/kasm_audio_input_server 2>/dev/null || true \
+    && chmod 755 $STARTUPDIR/gamepad/kasm_gamepad_server 2>/dev/null || true \
+    && chmod 755 $STARTUPDIR/webcam/kasm_webcam_server 2>/dev/null || true \
+    && chmod 755 $STARTUPDIR/printer/kasm_printer_service 2>/dev/null || true \
+    && chmod 755 $STARTUPDIR/smartcard/kasm_smartcard_bridge 2>/dev/null || true \
+    && chmod 755 $STARTUPDIR/recorder/kasm_recorder_service 2>/dev/null || true
 
 ### Labels
 LABEL "org.opencontainers.image.authors"='Kasm Tech "info@kasmweb.com"'
@@ -165,5 +220,6 @@ ENV HOME=/home/kasm-user
 WORKDIR $HOME
 USER 1000
 
-ENTRYPOINT ["/dockerstartup/kasm_default_profile.sh", "/dockerstartup/vnc_startup.sh", "/dockerstartup/vnc_with_plex_startup.sh", "/dockerstartup/kasm_startup.sh"]
+# Standard Kasm entrypoint - vnc_startup.sh handles all startup including custom scripts
+ENTRYPOINT ["/dockerstartup/kasm_default_profile.sh", "/dockerstartup/vnc_startup.sh", "/dockerstartup/kasm_startup.sh"]
 CMD ["--wait"]

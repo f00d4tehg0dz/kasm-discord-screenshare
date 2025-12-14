@@ -1,8 +1,9 @@
 version: '3.8'
-
 services:
   kasmdiscordplexcontrol:
-    image: f00d4tehg0dz/kasm-discord-screenshare:latest
+    build:
+      context: .
+      dockerfile: dockerfile-f00d4tehg0dz-kasm-discord-screenshare
     container_name: kasmdiscordplexcontrol
     ports:
       - "6901:6901"      # KasmVNC web interface
@@ -13,13 +14,13 @@ services:
       - "8766:8766"      # WebSocket SSL Proxy
     environment:
       # VNC Configuration
-      - VNC_PW=${VNC_PW:-password}
-      - VNC_VIEW_ONLY_PW=${VNC_VIEW_ONLY_PW:-viewonly}
+      - VNC_PW=vncpassword
+      - VNC_VIEW_ONLY_PW=viewonlypassword
       - VNC_COL_DEPTH=24
-      - VNC_RESOLUTION=${VNC_RESOLUTION:-1280x720}
+      - VNC_RESOLUTION=1280x720
       - MAX_FRAME_RATE=24
 
-      # Kasm Services
+      # Kasm Services (disable unused ones)
       - KASM_SVC_AUDIO=1
       - KASM_SVC_AUDIO_INPUT=0
       - KASM_SVC_UPLOADS=0
@@ -33,23 +34,29 @@ services:
       # Desktop Environment
       - START_XFCE4=1
 
-      # Plex Configuration (required)
+      # Plex Configuration
       - IP=${PLEX_IP}
-      - PORT=${PLEX_PORT:-32400}
+      - PORT=${PLEX_PORT}
       - PLEX_TOKEN=${PLEX_TOKEN}
 
-    # Shared memory for browser/Discord stability
+    # Shared memory for browser/Discord
     shm_size: '512m'
 
-    # Volumes for persistent user data
+    # Volumes - DON'T mount over /home/kasm-user or scripts won't work!
     volumes:
-     ./kasm_data:/home/kasm-user
-    
+      # Persist user config (specific subdirectories only)
+      - kasmdiscordplexcontrol_config:/home/kasm-user/.config
+      - kasmdiscordplexcontrol_mozilla:/home/kasm-user/.mozilla
+      - kasmdiscordplexcontrol_discord:/home/kasm-user/.config/discord
+
+    # Network configuration
+    network_mode: bridge
+
     # Security options for container compatibility
     cap_add:
       - SYS_ADMIN
 
-    # Resource limits (adjust based on your needs)
+    # Resource limits
     deploy:
       resources:
         limits:
@@ -59,5 +66,17 @@ services:
           cpus: '1'
           memory: 2G
 
+    # Keep container running
+    stdin_open: true
+    tty: true
+
     # Restart policy
     restart: unless-stopped
+
+volumes:
+  kasmdiscordplexcontrol_config:
+    driver: local
+  kasmdiscordplexcontrol_mozilla:
+    driver: local
+  kasmdiscordplexcontrol_discord:
+    driver: local

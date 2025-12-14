@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+set -e
+
+prepare_rpm_repo_dependencies() {
+  if [[ "$DISTRO" = "oracle7" ]]; then
+    yum-config-manager --enable ol7_optional_latest
+  elif [[ "$DISTRO" = "oracle8" ]]; then
+    dnf config-manager --set-enabled ol8_codeready_builder
+    dnf install -y oracle-epel-release-el8
+  elif [[ "${DISTRO}" == "oracle9" ]]; then
+    dnf config-manager --set-enabled ol9_codeready_builder
+    dnf install -y oracle-epel-release-el9
+  fi
+}
+
+echo "Install KasmVNC server"
+cd /tmp
+BUILD_ARCH=$(uname -m)
+UBUNTU_CODENAME=""
+COMMIT_ID="674fb67ba321cc6f05c2a4055aff09b09feb8a52"
+BRANCH="master" # just use 'release' for a release branch
+KASMVNC_VER="1.4.1"
+COMMIT_ID_SHORT=$(echo "${COMMIT_ID}" | cut -c1-6)
+
+# Naming scheme is now different between an official release and feature branch
+KASM_VER_NAME_PART="${KASMVNC_VER}_${BRANCH}_${COMMIT_ID_SHORT}"
+if [[ "${BRANCH}" == "release" ]] ; then
+  KASM_VER_NAME_PART="${KASMVNC_VER}"
+fi
+
+if [ "${DISTRO}" == "kali" ]  ;
+then
+    apt-get update
+    apt-get install -y sgml-base
+    if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_kali-rolling_${KASM_VER_NAME_PART}_amd64.deb"
+    else
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_kali-rolling_${KASM_VER_NAME_PART}_arm64.deb"
+    fi
+elif [[ "${DISTRO}" == @(centos|oracle7) ]] ; then
+    BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_centos_core_${KASM_VER_NAME_PART}_x86_64.rpm"
+elif [[ "${DISTRO}" == @(rockylinux8|oracle8|almalinux8) ]] ; then
+    if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_oracle_8_${KASM_VER_NAME_PART}_x86_64.rpm"
+    else
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_oracle_8_${KASM_VER_NAME_PART}_aarch64.rpm"
+    fi
+elif [[ "${DISTRO}" == @(rockylinux9|oracle9|rhel9|almalinux9) ]] ; then
+    if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_oracle_9_${KASM_VER_NAME_PART}_x86_64.rpm"
+    else
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_oracle_9_${KASM_VER_NAME_PART}_aarch64.rpm"
+    fi
+elif [[ "${DISTRO}" == "opensuse" ]] ; then
+    if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_opensuse_15_${KASM_VER_NAME_PART}_x86_64.rpm"
+    else
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_opensuse_15_${KASM_VER_NAME_PART}_aarch64.rpm"
+    fi
+elif [[ "${DISTRO}" == "fedora37" ]] ; then
+    if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_fedora_thirtyseven_${KASM_VER_NAME_PART}_x86_64.rpm"
+    else
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_fedora_thirtyseven_${KASM_VER_NAME_PART}_aarch64.rpm"
+    fi
+elif [[ "${DISTRO}" == "fedora38" ]] ; then
+    if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_fedora_thirtyeight_${KASM_VER_NAME_PART}_x86_64.rpm"
+    else
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_fedora_thirtyeight_${KASM_VER_NAME_PART}_aarch64.rpm"
+    fi
+elif [[ "${DISTRO}" == "fedora39" ]] ; then
+    if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_fedora_thirtynine_${KASM_VER_NAME_PART}_x86_64.rpm"
+    else
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_fedora_thirtynine_${KASM_VER_NAME_PART}_aarch64.rpm"
+    fi
+elif [[ "${DISTRO}" == "fedora40" ]] ; then
+    if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_fedora_forty_${KASM_VER_NAME_PART}_x86_64.rpm"
+    else
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_fedora_forty_${KASM_VER_NAME_PART}_aarch64.rpm"
+    fi
+elif [[ "${DISTRO}" == "fedora41" ]] ; then
+    if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_fedora_fortyone_${KASM_VER_NAME_PART}_x86_64.rpm"
+    else
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_fedora_fortyone_${KASM_VER_NAME_PART}_aarch64.rpm"
+    fi
+elif [[ "${DISTRO}" = @(debian|parrotos6) ]] ; then
+    if $(grep -q trixie /etc/os-release); then
+        if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+            BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_trixie_${KASM_VER_NAME_PART}_amd64.deb"
+        else
+            BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_trixie_${KASM_VER_NAME_PART}_arm64.deb"
+        fi
+    elif $(grep -q bookworm /etc/os-release) || $(grep -q lory /etc/os-release); then
+        if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+            BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_bookworm_${KASM_VER_NAME_PART}_amd64.deb"
+        else
+            BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_bookworm_${KASM_VER_NAME_PART}_arm64.deb"
+        fi
+    else
+        if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+            BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_bullseye_${KASM_VER_NAME_PART}_amd64.deb"
+        else
+            BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_bullseye_${KASM_VER_NAME_PART}_arm64.deb"
+        fi
+    fi
+elif [[ "${DISTRO}" == "alpine" ]] ; then
+    if grep -q v3.21 /etc/os-release; then
+        if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+            BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_alpine_321_${KASM_VER_NAME_PART}_x86_64.apk"
+        else
+            BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_alpine_321_${KASM_VER_NAME_PART}_aarch64.apk"
+        fi
+    elif grep -q v3.20 /etc/os-release; then
+        if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+            BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_alpine_320_${KASM_VER_NAME_PART}_x86_64.apk"
+        else
+            BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_alpine_320_${KASM_VER_NAME_PART}_aarch64.apk"
+        fi
+    elif grep -q v3.19 /etc/os-release; then
+        if [[ "$(arch)" =~ ^x86_64$ ]] ; then
+            BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_alpine_319_${KASM_VER_NAME_PART}_x86_64.apk"
+        else
+            BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_alpine_319_${KASM_VER_NAME_PART}_aarch64.apk"
+        fi
+    fi
+else
+    UBUNTU_CODENAME=$(grep -Po -m 1 "(?<=_CODENAME=)\w+" /etc/os-release)
+    if [[ "${BUILD_ARCH}" =~ ^aarch64$ ]] ; then
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_${UBUNTU_CODENAME}_${KASM_VER_NAME_PART}_arm64.deb"
+    else
+        BUILD_URL="https://kasmweb-build-artifacts.s3.amazonaws.com/kasmvnc/${COMMIT_ID}/kasmvncserver_${UBUNTU_CODENAME}_${KASM_VER_NAME_PART}_amd64.deb"
+    fi
+fi
+
+
+prepare_rpm_repo_dependencies
+if [[ "${DISTRO}" == @(centos|oracle7) ]] ; then
+    wget "${BUILD_URL}" -O kasmvncserver.rpm
+    yum localinstall -y kasmvncserver.rpm
+    rm kasmvncserver.rpm
+elif [[ "${DISTRO}" == @(oracle8|oracle9|rhel9|rockylinux9|rockylinux8|almalinux8|almalinux9) ]] ; then
+    wget "${BUILD_URL}" -O kasmvncserver.rpm
+    dnf localinstall -y kasmvncserver.rpm
+    dnf install -y mesa-dri-drivers
+    rm kasmvncserver.rpm
+elif [[ "${DISTRO}" == @(fedora37|fedora38|fedora39|fedora40|fedora41) ]] ; then
+    dnf install -y xorg-x11-drv-amdgpu xorg-x11-drv-ati
+    if [ "${BUILD_ARCH}" == "x86_64" ]; then
+        dnf install -y xorg-x11-drv-intel
+    fi
+    wget "${BUILD_URL}" -O kasmvncserver.rpm
+    if [[ "${DISTRO}" == "fedora41" ]] ; then
+        dnf-3 localinstall -y --allowerasing kasmvncserver.rpm
+        dnf install -y update-crypto-policies
+        update-crypto-policies --set FEDORA40
+    else
+        dnf localinstall -y --allowerasing kasmvncserver.rpm
+    fi
+    dnf install -y mesa-dri-drivers
+    rm kasmvncserver.rpm
+elif [[ "${DISTRO}" == "opensuse" ]] ; then
+    mkdir -p /etc/pki/tls/private
+    wget "${BUILD_URL}" -O kasmvncserver.rpm
+    zypper install -y \
+        libdrm_amdgpu1 \
+	libdrm_radeon1
+    if [ "${BUILD_ARCH}" == "x86_64" ]; then
+        zypper install -y libdrm_intel1
+    fi
+    zypper install -y --allow-unsigned-rpm ./kasmvncserver.rpm
+    rm kasmvncserver.rpm
+elif [[ "${DISTRO}" == "alpine" ]] ; then
+    apk add --no-cache \
+        libgomp \
+        libjpeg-turbo \
+        libwebp \
+        libxfont2 \
+        libxshmfence \
+        mesa-gbm \
+        pciutils-libs \
+        perl \
+        perl-datetime \
+        perl-hash-merge-simple \
+        perl-list-moreutils \
+        perl-switch \
+        perl-try-tiny \
+        perl-yaml-tiny \
+        perl-datetime \
+        perl-datetime-timezone \
+        pixman \
+        py3-xdg \
+        setxkbmap \
+        xauth \
+        xf86-video-amdgpu \
+        xf86-video-ati \
+        xf86-video-nouveau \
+        xkbcomp \
+        xkeyboard-config \
+        xterm
+    if [ "${BUILD_ARCH}" == "x86_64" ]; then
+        apk add --no-cache xf86-video-intel
+        apk add --no-cache mesa-vulkan-intel
+    fi
+    wget "${BUILD_URL}" -O kasmvncserver.apk
+    apk add --no-cache --allow-untrusted kasmvncserver.apk
+    ln -s /usr/local/share/kasmvnc /usr/share/kasmvnc
+    ln -s /usr/local/etc/kasmvnc /etc/kasmvnc
+    ln -s /usr/local/lib/kasmvnc /usr/lib/kasmvncserver
+    rm -f kasmvncserver.apk
+else
+    wget "${BUILD_URL}" -O kasmvncserver.deb
+    apt-get update
+    apt-get install -y gettext ssl-cert libxfont2
+    apt-get install -y /tmp/kasmvncserver.deb
+    rm -f /tmp/kasmvncserver.deb
+fi
+mkdir -p $KASM_VNC_PATH/www/Downloads
+chown -R 0:0 $KASM_VNC_PATH
+chmod -R og-w $KASM_VNC_PATH
+ln -sf /home/kasm-user/Downloads $KASM_VNC_PATH/www/Downloads/Downloads
+chown -R 1000:0 $KASM_VNC_PATH/www/Downloads

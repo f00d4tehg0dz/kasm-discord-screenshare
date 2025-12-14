@@ -1,1 +1,0 @@
-KasmOS is designed to provide a more familiar UI for general productivity use cases.

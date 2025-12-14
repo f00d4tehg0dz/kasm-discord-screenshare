@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+### every exit != 0 fails the script
+set -e
+
+echo $DISTRO
+
+if [ "${DISTRO}" == "oracle7" ] || [ "${DISTRO}" == "centos" ]; then
+  yum install -y cups cups-client cups-pdf
+elif [[ "${DISTRO}" == @(almalinux8|almalinux9|oracle8|oracle9|rhel9|rockylinux8|rockylinux9|fedora37|fedora38|fedora39|fedora40|fedora41) ]]; then
+  dnf install -y cups cups-client cups-pdf
+elif [ "${DISTRO}" == "opensuse" ]; then
+  zypper install -y cups cups-client cups-pdf
+elif [ "${DISTRO}" == "alpine" ]; then
+  echo '@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing' >> /etc/apk/repositories
+  apk add --no-cache cups cups-client cups-pdf@testing
+  usermod -a -G lpadmin root
+else
+  apt-get update
+  apt-get install -y cups-filters 
+  apt-get install -y cups cups-client printer-driver-cups-pdf
+fi
+
+# change the default path where pdfs are saved
+# to the one watched by the printer service
+sed -i -r -e "s:^(Out\s).*:\1/home/kasm-user/PDF:" /etc/cups/cups-pdf.conf
+
+COMMIT_ID="7f560de30209f2fc9b59adb44430a80558c446ce"
+BRANCH="develop"
+COMMIT_ID_SHORT=$(echo "${COMMIT_ID}" | cut -c1-6)
+
+ARCH=$(arch | sed 's/aarch64/arm64/g' | sed 's/x86_64/amd64/g')
+
+mkdir -p $STARTUPDIR/printer
+wget -qO- https://kasmweb-build-artifacts.s3.amazonaws.com/kasm_printer_service/${COMMIT_ID}/kasm_printer_service_${ARCH}_${BRANCH}.${COMMIT_ID_SHORT}.tar.gz | tar -xvz -C $STARTUPDIR/printer/
+echo "${BRANCH}:${COMMIT_ID}" > $STARTUPDIR/printer/kasm_printer.version
+
+
+cat >/usr/bin/printer_ready <<EOL
+#!/usr/bin/env bash
+set -x
+if [[ \${KASM_SVC_PRINTER:-1} == 1 ]]; then
+  PRINTER_NAME=\${KASM_PRINTER_NAME:-Kasm-Printer}
+  until [[ "\$(lpstat -r)" == "scheduler is running" ]]; do sleep 1; done
+  echo "Scheduler is running"
+
+  until lpstat -p "\$PRINTER_NAME" | grep -q "is idle"; do
+      sleep 1
+  done
+  echo "Printer \$PRINTER_NAME is idle."
+else
+  echo "Printing service is not enabled"
+fi
+EOL
+chmod +x /usr/bin/printer_ready

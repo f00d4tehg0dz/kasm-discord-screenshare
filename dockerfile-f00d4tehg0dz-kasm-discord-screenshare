@@ -4,17 +4,50 @@ FROM kasmweb/$BASE_IMAGE:$BASE_TAG
 
 USER root
 
-ENV HOME /home/kasm-default-profile
-ENV STARTUPDIR /dockerstartup
+ENV HOME=/home/kasm-default-profile
+ENV STARTUPDIR=/dockerstartup
 WORKDIR $HOME
 
-### Envrionment config 
+### Environment config (merged from core image)
+ARG DISTRO=ubuntu
+ARG LANG='en_US.UTF-8'
+ARG LANGUAGE='en_US:en'
+ARG LC_ALL='en_US.UTF-8'
+ARG TZ='Etc/UTC'
+ARG START_PULSEAUDIO=1
+ARG START_XFCE4=1
+
 ENV DEBIAN_FRONTEND=noninteractive \
+    DISTRO=$DISTRO \
     SKIP_CLEAN=true \
     KASM_RX_HOME=$STARTUPDIR/kasmrx \
     DONT_PROMPT_WSL_INSTALL="No_Prompt_please" \
     INST_DIR=$STARTUPDIR/install \
-    INST_SCRIPTS="/ubuntu/install/tools/install_tools_deluxe.sh \
+    KASM_VNC_PATH=/usr/share/kasmvnc \
+    LANG=$LANG \
+    LANGUAGE=$LANGUAGE \
+    LC_ALL=$LC_ALL \
+    TZ=$TZ \
+    DISPLAY=:1 \
+    GOMP_SPINCOUNT=0 \
+    KASMVNC_AUTO_RECOVER=true \
+    LD_LIBRARY_PATH=/opt/libjpeg-turbo/lib64/:/usr/local/lib/:/usr/lib/x86_64-linux-gnu:/usr/lib/i386-linux-gnu:/usr/local/nvidia/lib:/usr/local/nvidia/lib64 \
+    MAX_FRAME_RATE=24 \
+    NO_VNC_PORT=6901 \
+    OMP_WAIT_POLICY=PASSIVE \
+    PULSE_RUNTIME_PATH=/var/run/pulse \
+    AUDIO_PORT=4901 \
+    SHELL=/bin/bash \
+    START_PULSEAUDIO=$START_PULSEAUDIO \
+    START_XFCE4=$START_XFCE4 \
+    TERM=xterm \
+    VNC_COL_DEPTH=24 \
+    VNCOPTIONS="-PreferBandwidth -DynamicQualityMin=4 -DynamicQualityMax=7 -DLP_ClipDelay=0" \
+    VNC_PORT=5901 \
+    VNC_RESOLUTION=1920x1080 \
+    SDL_GAMECONTROLLERCONFIG="030000005e040000be02000014010000,XInput Controller,platform:Linux,a:b0,b:b1,x:b2,y:b3,back:b8,guide:b16,start:b9,leftstick:b10,rightstick:b11,leftshoulder:b4,rightshoulder:b5,dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:b6,righttrigger:b7"
+
+ENV INST_SCRIPTS="/ubuntu/install/tools/install_tools_deluxe.sh \
                   /ubuntu/install/misc/install_tools.sh \
                   /ubuntu/install/chrome/install_chrome.sh \
                   /ubuntu/install/chromium/install_chromium.sh \
@@ -22,7 +55,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
                   /ubuntu/install/vs_code/install_vs_code.sh \
                   /ubuntu/install/discord/install_discord.sh \
                   /ubuntu/install/cleanup/cleanup.sh"
-
 
 # Copy install scripts from workspaces-images (ubuntu and common)
 COPY ./workspaces-images/src/ $INST_DIR
@@ -74,22 +106,64 @@ RUN mkdir -p /home/kasm-user/Desktop \
     && chown -R 1000:0 /home/kasm-user \
     && chmod -R 755 /home/kasm-user/Desktop
 
-COPY ./vnc_startup.sh $STARTUPDIR/vnc_startup.sh
+COPY ./workspaces-core-images-develop/src/common/startup_scripts/vnc_startup.sh $STARTUPDIR/vnc_startup.sh
 # Fix Windows line endings
 RUN sed -i 's/\r$//' $STARTUPDIR/vnc_startup.sh && chmod +x $STARTUPDIR/vnc_startup.sh
+
+COPY ./vnc_with_plex_startup.sh $STARTUPDIR/vnc_with_plex_startup.sh
+# Fix Windows line endings
+RUN sed -i 's/\r$//' $STARTUPDIR/vnc_with_plex_startup.sh && chmod +x $STARTUPDIR/vnc_with_plex_startup.sh
 
 # Copy custom startup script for Plex Discord integration
 COPY ./custom_startup-plex-discord.sh $STARTUPDIR/custom_startup-plex-discord.sh
 # Fix Windows line endings and make executable
 RUN sed -i 's/\r$//' $STARTUPDIR/custom_startup-plex-discord.sh && chmod +x $STARTUPDIR/custom_startup-plex-discord.sh
 
+# Install Python dependencies for plex-discord-server
+RUN apt-get update && apt-get install -y python3 python3-pip \
+    && pip3 install --no-cache-dir --break-system-packages websockets==13.0 aiohttp==3.9.1 aiofiles==23.2.1
+
+# Copy plex-discord-server scripts
+RUN mkdir -p /home/kasm-user/.local/bin
+COPY plex-discord-server.py /home/kasm-user/.local/bin/plex-discord-server
+COPY websocket-proxy.py /home/kasm-user/.local/bin/websocket-proxy
+RUN sed -i 's/\r$//' /home/kasm-user/.local/bin/plex-discord-server \
+    && sed -i 's/\r$//' /home/kasm-user/.local/bin/websocket-proxy \
+    && chmod +x /home/kasm-user/.local/bin/plex-discord-server \
+    && chmod +x /home/kasm-user/.local/bin/websocket-proxy \
+    && chown -R 1000:0 /home/kasm-user/.local/bin
+
 # Copy prebuilt Firefox extension
 RUN mkdir -p /app/plex-firefox-ext
 COPY ./plex-firefox-ext/plex-discord-control@local.xpi /app/plex-firefox-ext/
 
+### Create startup log files (from core image)
+RUN touch $STARTUPDIR/wm.log \
+    && touch $STARTUPDIR/window_manager_startup.log \
+    && touch $STARTUPDIR/vnc_startup.log \
+    && touch $STARTUPDIR/vnc_startup_with_plex_startup.log \
+    && touch $STARTUPDIR/no_vnc_startup.log \
+    && chown -R root:root $STARTUPDIR \
+    && find $STARTUPDIR -type d -exec chmod 755 {} \; \
+    && find $STARTUPDIR -type f -exec chmod 644 {} \; \
+    && find $STARTUPDIR -type f -iname "*.sh" -exec chmod 755 {} \; \
+    && find $STARTUPDIR -type f -iname "*.py" -exec chmod 755 {} \; \
+    && find $STARTUPDIR -type f -iname "*.log" -exec chmod 666 {} \; \
+    && mkdir -p $STARTUPDIR/kasmrx/Downloads \
+    && chown 1000:1000 $STARTUPDIR/kasmrx/Downloads
+
+### Labels
+LABEL "org.opencontainers.image.authors"='Kasm Tech "info@kasmweb.com"'
+LABEL "com.kasmweb.image"="true"
+LABEL "com.kasmweb.gpu_acceleration_egl"="nvidia"
+
+### Ports
+EXPOSE $VNC_PORT $NO_VNC_PORT $AUDIO_PORT
+
 # Userspace Runtime
-ENV HOME /home/kasm-user
+ENV HOME=/home/kasm-user
 WORKDIR $HOME
 USER 1000
 
-CMD ["--tail-log"]
+ENTRYPOINT ["/dockerstartup/kasm_default_profile.sh", "/dockerstartup/vnc_startup.sh", "/dockerstartup/vnc_with_plex_startup.sh", "/dockerstartup/kasm_startup.sh"]
+CMD ["--wait"]

@@ -1,0 +1,11 @@
+#!/bin/bash
+
+set -e
+
+image="$1"
+if [[ -z "$image" ]]; then
+  echo >&2 "Usage: $(basename "$0") <image>"
+  exit 1
+fi
+
+docker run --rm -it -e VNC_PW=bushel9 -e HW3D=true -e DRINODE=/dev/dri/renderD128 -e KASM_ENABLE_ZINK=1 -e KASM_DRI_CARD=/dev/dri/card0 -e KASM_DRI_RENDERD=/dev/dri/renderD128 --device /dev/dri/card0:/dev/dri/card0:rwm --device=/dev/dri/renderD128:/dev/dri/renderD128:rwm --group-add=106 -p 443:6901 "$image" bash

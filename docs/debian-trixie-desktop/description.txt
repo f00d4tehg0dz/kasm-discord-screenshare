@@ -1,1 +1,0 @@
-Debian Trixie desktop for Kasm Workspaces

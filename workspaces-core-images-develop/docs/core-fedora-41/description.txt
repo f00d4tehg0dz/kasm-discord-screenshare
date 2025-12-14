@@ -1,0 +1,1 @@
+Fedora 41 base image for Kasm Workspaces

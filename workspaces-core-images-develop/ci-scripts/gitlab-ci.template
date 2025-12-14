@@ -1,0 +1,417 @@
+############
+# Settings #
+############
+image: docker:28.0.0
+services:
+  - docker:28.0.0-dind
+stages:
+  - readme
+  - revert
+  - build
+  - scan
+  - test
+  - manifest
+default:
+  retry: 2
+variables:
+  KASM_RELEASE: "{{ KASM_RELEASE }}"
+  TEST_INSTALLER: "{{ TEST_INSTALLER }}"
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  MIRROR_ORG_NAME: "{{ MIRROR_ORG_NAME }}"
+before_script:
+  - docker login --username $DOCKER_HUB_USERNAME --password $DOCKER_HUB_PASSWORD
+  - if [ "$CI_COMMIT_REF_PROTECTED" == "true" ]; then docker login --username $QUAY_USERNAME --password $QUAY_PASSWORD quay.io; fi 
+  - if [ "$CI_COMMIT_REF_PROTECTED" == "true" ]; then docker login --username $GHCR_USERNAME --password $GHCR_PASSWORD ghcr.io; fi 
+  - export SANITIZED_BRANCH="$(echo ${CI_COMMIT_REF_NAME:0:64} | sed -r 's#^release/##' | sed 's/\//_/g')"
+
+.run_rules:
+  rules:
+    - if: >
+        $README_USERNAME || 
+        $README_PASSWORD || 
+        $QUAY_API_KEY || 
+        $DOCKERHUB_REVERT || 
+        $REVERT_IS_ROLLING
+      when: never
+
+###############################################
+# Build Containers and push to cache endpoint #
+###############################################
+{% for IMAGE in multiImages %}
+build_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: build
+  extends: .run_rules
+  rules:
+    - !reference [.run_rules, rules]
+    - if: $PARENT_PIPELINE_SOURCE == "schedule" && $RUN_SET == "schedule"
+      when: never
+    - if: $CI_COMMIT_REF_NAME == "develop" || $CI_COMMIT_REF_NAME =~ /^release\/.*$/
+      when: always
+    - if: $PARENT_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+    {% if FILE_LIMITS %}- changes:
+      {% for FILE in files %}- {{ FILE }}
+      {% endfor %}{% for FILE in IMAGE.changeFiles %}- {{ FILE }}
+      {% endfor %}{% endif %}
+    - when: never
+  script:
+    - apk add bash
+    - bash ci-scripts/build.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}" "{{ IMAGE.base }}" "{{ IMAGE.bg }}" "{{ IMAGE.distro }}" "{{ IMAGE.dockerfile }}"
+  tags:
+    - ${TAG}
+  retry: 1
+  parallel:
+    matrix:
+      - TAG: [ oci-amd-scheduled, oci-arm-scheduled ]
+{% endfor %}
+
+{% for IMAGE in singleImages %}
+build_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: build
+  extends: .run_rules
+  rules:
+    - !reference [.run_rules, rules]
+    - if: $PARENT_PIPELINE_SOURCE == "schedule" && $RUN_SET == "schedule"
+      when: never
+    - if: $CI_COMMIT_REF_NAME == "develop" || $CI_COMMIT_REF_NAME =~ /^release\/.*$/
+      when: always
+    - if: $PARENT_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+    {% if FILE_LIMITS %}- changes:
+      {% for FILE in files %}- {{ FILE }}
+      {% endfor %}{% for FILE in IMAGE.changeFiles %}- {{ FILE }}
+      {% endfor %}{% endif %}
+    - when: never
+  script:
+    - apk add bash
+    - bash ci-scripts/build.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}" "{{ IMAGE.base }}" "{{ IMAGE.bg }}" "{{ IMAGE.distro }}" "{{ IMAGE.dockerfile }}"
+  tags:
+    - oci-amd-scheduled
+  retry: 1
+{% endfor %}
+
+######################################
+# Test containers and upload results #
+######################################
+{% for IMAGE in multiImages %}
+test_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: test
+  extends: .run_rules
+  rules:
+    - !reference [.run_rules, rules]
+    - if: $PARENT_PIPELINE_SOURCE == "schedule" && $RUN_SET == "schedule"
+      when: never
+    - if: $CI_COMMIT_REF_NAME == "develop" || $CI_COMMIT_REF_NAME =~ /^release\/.*$/
+      when: always
+    - if: $PARENT_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+    {% if FILE_LIMITS %}- changes:
+      {% for FILE in files %}- {{ FILE }}
+      {% endfor %}{% for FILE in IMAGE.changeFiles %}- {{ FILE }}
+      {% endfor %}{% endif %}
+  script:
+    - apk add bash
+    - bash ci-scripts/test.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}" "{{ IMAGE.base }}" "{{ IMAGE.bg }}" "{{ IMAGE.distro }}" "{{ IMAGE.dockerfile }}" "${ARCH}" "${EC2_LAUNCHER_ID}" "${EC2_LAUNCHER_SECRET}"
+  needs:
+    - build_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}
+  tags:
+    - oci-amd-scheduled
+  retry: 1
+  parallel:
+    matrix:
+      - ARCH: [ "x86_64", "aarch64" ]
+{% endfor %}
+
+{% for IMAGE in singleImages %}
+test_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: test
+  extends: .run_rules
+  rules:
+    - !reference [.run_rules, rules]
+    - if: $PARENT_PIPELINE_SOURCE == "schedule" && $RUN_SET == "schedule"
+      when: never
+    - if: $CI_COMMIT_REF_NAME == "develop" || $CI_COMMIT_REF_NAME =~ /^release\/.*$/
+      when: always
+    - if: $PARENT_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+    {% if FILE_LIMITS %}- changes:
+      {% for FILE in files %}- {{ FILE }}
+      {% endfor %}{% for FILE in IMAGE.changeFiles %}- {{ FILE }}
+      {% endfor %}{% endif %}
+  script:
+    - apk add bash
+    - bash ci-scripts/test.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}" "{{ IMAGE.base }}" "{{ IMAGE.bg }}" "{{ IMAGE.distro }}" "{{ IMAGE.dockerfile }}" "x86_64" "${EC2_LAUNCHER_ID}" "${EC2_LAUNCHER_SECRET}"
+  needs:
+    - build_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}
+  tags:
+    - oci-amd-scheduled
+  retry: 1
+{% endfor %}
+
+######################################
+# Vulnerability Scans                #
+######################################
+{% for IMAGE in multiImages %}
+scan_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: scan
+  rules:
+    - if: >
+        $README_USERNAME ||
+        $README_PASSWORD ||
+        $QUAY_API_KEY
+      when: never
+    - if: $PARENT_PIPELINE_SOURCE == "schedule" && $RUN_SET == "schedule"
+      when: never
+    - if: $CI_COMMIT_REF_NAME == "develop" || $CI_COMMIT_REF_NAME =~ /^release\/.*$/
+      when: always
+    - if: $PARENT_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+    {% if FILE_LIMITS %}- changes:
+      {% for FILE in files %}- {{ FILE }}
+      {% endfor %}{% for FILE in IMAGE.changeFiles %}- {{ FILE }}
+      {% endfor %}{% endif %}
+  script:
+    - apk add bash
+    - (cd ci-scripts && bash download-trivy)
+    - bash ci-scripts/scan image ${ORG_NAME}/image-cache-private:$(arch)-core-{{ IMAGE.name1 }}-{{ IMAGE.name2 }}-${SANITIZED_BRANCH}-${CI_PIPELINE_ID}
+  needs:
+    - build_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}
+  tags:
+    - oci-amd-scheduled
+  retry: 1
+  artifacts:
+    reports:
+      junit:
+        - $CI_PROJECT_DIR/trivy-report.xml
+  parallel:
+    matrix:
+      - ARCH: [ "x86_64", "aarch64" ]
+{% endfor %}
+
+{% for IMAGE in singleImages %}
+scan_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: scan
+  rules:
+    - if: >
+        $README_USERNAME ||
+        $README_PASSWORD ||
+        $QUAY_API_KEY
+      when: never
+    - if: $PARENT_PIPELINE_SOURCE == "schedule" && $RUN_SET == "schedule"
+      when: never
+    - if: $CI_COMMIT_REF_NAME == "develop" || $CI_COMMIT_REF_NAME =~ /^release\/.*$/
+      when: always
+    - if: $PARENT_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+    {% if FILE_LIMITS %}- changes:
+      {% for FILE in files %}- {{ FILE }}
+      {% endfor %}{% for FILE in IMAGE.changeFiles %}- {{ FILE }}
+      {% endfor %}{% endif %}
+  script:
+    - apk add bash
+    - (cd ci-scripts && bash download-trivy)
+    - bash ci-scripts/scan image ${ORG_NAME}/image-cache-private:x86_64-core-{{ IMAGE.name1 }}-{{ IMAGE.name2 }}-${SANITIZED_BRANCH}-${CI_PIPELINE_ID}
+  needs:
+    - build_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}
+  artifacts:
+    reports:
+      junit:
+        - $CI_PROJECT_DIR/trivy-report.xml
+  tags:
+    - oci-amd-scheduled
+  retry: 1
+{% endfor %}
+
+############################################
+# Manifest Containers if their test passed #
+############################################
+{% for IMAGE in multiImages %}
+manifest_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: manifest
+  extends: .run_rules
+  rules:
+    - !reference [.run_rules, rules]
+    - if: $PARENT_PIPELINE_SOURCE == "schedule" && $RUN_SET == "schedule"
+      when: never
+    - if: $CI_COMMIT_REF_NAME == "develop" || $CI_COMMIT_REF_NAME =~ /^release\/.*$/
+      when: always
+    - if: $PARENT_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+    {% if FILE_LIMITS %}- changes:
+      {% for FILE in files %}- {{ FILE }}
+      {% endfor %}{% for FILE in IMAGE.changeFiles %}- {{ FILE }}
+      {% endfor %}{% endif %}
+  variables:
+    SCHEDULED: "{{ SCHEDULED }}"
+    SCHEDULE_NAME: "{{ SCHEDULE_NAME }}"
+  script:
+    - apk add bash
+    - bash ci-scripts/manifest.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}" "multi"
+  needs:
+    - test_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}
+  tags:
+    - oci-amd-scheduled
+{% endfor %}
+
+{% for IMAGE in singleImages %}
+manifest_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: manifest
+  extends: .run_rules
+  rules:
+    - !reference [.run_rules, rules]
+    - if: $PARENT_PIPELINE_SOURCE == "schedule" && $RUN_SET == "schedule"
+      when: never
+    - if: $CI_COMMIT_REF_NAME == "develop" || $CI_COMMIT_REF_NAME =~ /^release\/.*$/
+      when: always
+    - if: $PARENT_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+    {% if FILE_LIMITS %}- changes:
+      {% for FILE in files %}- {{ FILE }}
+      {% endfor %}{% for FILE in IMAGE.changeFiles %}- {{ FILE }}
+      {% endfor %}{% endif %}
+  variables:
+    SCHEDULED: "{{ SCHEDULED }}"
+    SCHEDULE_NAME: "{{ SCHEDULE_NAME }}"
+  script:
+    - apk add bash
+    - bash ci-scripts/manifest.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}" "single"
+  needs:
+    - test_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}
+  tags:
+    - oci-amd-scheduled
+{% endfor %}
+
+#############################
+# Manifest for Weekly Build #
+#############################
+
+{% for IMAGE in multiImages %}
+manifest_weekly_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: manifest
+  rules:
+    - if: >
+        $README_USERNAME || 
+        $README_PASSWORD || 
+        $QUAY_API_KEY || 
+        $DOCKERHUB_REVERT || 
+        $REVERT_IS_ROLLING
+      when: never
+    - if: $PARENT_PIPELINE_SOURCE == "schedule" && $RUN_SET == "schedule"
+      when: always
+    - when: never
+  script:
+    - apk add bash tar
+    - bash ci-scripts/weekly-manifest.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}" "multi"
+  retry: 1
+  tags:
+    - oci-amd-scheduled
+{% endfor %}
+
+{% for IMAGE in singleImages %}
+manifest_weekly_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: manifest
+  rules:
+    - if: >
+        $README_USERNAME || 
+        $README_PASSWORD || 
+        $QUAY_API_KEY || 
+        $DOCKERHUB_REVERT || 
+        $REVERT_IS_ROLLING
+      when: never
+    - if: $PARENT_PIPELINE_SOURCE == "schedule" && $RUN_SET == "schedule"
+      when: always
+    - when: never
+  script:
+    - apk add bash tar
+    - bash ci-scripts/weekly-manifest.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}" "single"
+  retry: 1
+  tags:
+    - oci-amd-scheduled
+{% endfor %}
+
+####################
+# Helper Functions #
+####################
+
+## Update Readmes ##
+{% for IMAGE in multiImages %}
+update_readmes_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: readme
+  rules:
+    - if: >
+        $README_USERNAME && 
+        $README_PASSWORD
+      when: always
+  script:
+    - apk add bash
+    - bash ci-scripts/readme.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}"
+  tags:
+    - oci-amd-scheduled
+{% endfor %}
+
+{% for IMAGE in singleImages %}
+update_readmes_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: readme
+  rules:
+    - if: >
+        $README_USERNAME && 
+        $README_PASSWORD
+      when: always
+  script:
+    - apk add bash
+    - bash ci-scripts/readme.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}"
+  tags:
+    - oci-amd-scheduled
+{% endfor %}
+
+{% for IMAGE in multiImages %}
+update_quay_readmes_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: readme
+  rules:
+    - if: $QUAY_API_KEY
+      when: always
+  script:
+    - apk add bash
+    - bash ci-scripts/quay_readme.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}"
+  tags:
+    - oci-amd-scheduled
+{% endfor %}
+
+{% for IMAGE in singleImages %}
+update_quay_readmes_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: readme
+  rules:
+    - if: $QUAY_API_KEY
+      when: always
+  script:
+    - apk add bash
+    - bash ci-scripts/quay_readme.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}"
+  tags:
+    - oci-amd-scheduled
+{% endfor %}
+
+## Revert Images to specific build id ##
+{% for IMAGE in multiImages %}
+dockerhub_revert_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: revert
+  rules:
+    - if: >
+        $DOCKERHUB_REVERT &&
+        $REVERT_IS_ROLLING
+      when: always
+  script:
+    - /bin/bash ci-scripts/manifest.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}" "multi" "${DOCKERHUB_REVERT}" "${REVERT_IS_ROLLING}"
+{% endfor %}
+
+{% for IMAGE in singleImages %}
+dockerhub_revert_{{ IMAGE.name1 }}_{{ IMAGE.name2 }}:
+  stage: revert
+  rules:
+    - if: >
+        $DOCKERHUB_REVERT &&
+        $REVERT_IS_ROLLING
+      when: always
+  script:
+    - /bin/bash ci-scripts/manifest.sh "{{ IMAGE.name1 }}" "{{ IMAGE.name2 }}" "single" "${DOCKERHUB_REVERT}" "${REVERT_IS_ROLLING}"
+{% endfor %}

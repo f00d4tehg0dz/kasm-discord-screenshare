@@ -1,0 +1,372 @@
+files: &UNIVERSAL_CHANGE_FILES
+  - src/common/**
+  - src/common/startup_scripts/**
+  - src/common/scripts/**
+  - src/common/scripts/kasm_hook_scripts/**
+  - src/ubuntu/install/audio/**
+  - src/ubuntu/install/audio_input/**
+  - src/ubuntu/install/cleanup/**
+  - src/ubuntu/install/cursors/**
+  - src/ubuntu/install/emblems/**
+  - src/ubuntu/install/fonts/**
+  - src/ubuntu/install/gamepad/**
+  - src/ubuntu/install/kasm_upload_server/**
+  - src/ubuntu/install/kasm_vnc/**
+  - src/ubuntu/install/langpacks/**
+  - src/ubuntu/install/maximize_script/**
+  - src/ubuntu/install/package_rules/**
+  - src/ubuntu/install/printer/**
+  - src/ubuntu/install/smartcard/**
+  - src/ubuntu/install/profile_sync/**
+  - src/ubuntu/install/squid/**
+  - src/ubuntu/install/squid/install/**
+  - src/ubuntu/install/squid/resources/**
+  - src/ubuntu/install/tools/**
+  - src/ubuntu/install/webcam/**
+  - src/ubuntu/install/recorder/**
+  - src/ubuntu/install/xfce
+  - ci-scripts/**
+  - .gitlab-ci.yml
+
+multiImages:
+  - name1: kasmos
+    name2: kasmos
+    base: debian:bookworm-slim
+    bg: kasmos.png
+    distro: debian
+    dockerfile: dockerfile-kasm-core-kasmos
+    changeFiles:
+      - dockerfile-kasm-core-kasmos
+      - src/ubuntu/install/package_rules/**
+      - src/ubuntu/nvidia/**
+      - src/ubuntu/sysbox/**
+      - src/ubuntu/virtualgl/**
+      - src/ubuntu/install/kde/**
+      - kasm-desktop-kde/**
+  - name1: ubuntu
+    name2: jammy
+    base: ubuntu:22.04
+    bg: bg_jammy.png
+    distro: ubuntu
+    dockerfile: dockerfile-kasm-core
+    changeFiles:
+      - dockerfile-kasm-core
+      - src/ubuntu/xfce/**
+      - src/ubuntu/xfce/.config/**
+      - src/ubuntu/xfce/.config/xfce4/**
+      - src/ubuntu/xfce/.config/xfce4/xfconf/**
+      - src/ubuntu/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/ubuntu/xfce/.config/xfce4/xfconf/single-application-xfce-perchannel-xml/**
+      - src/ubuntu/nvidia/**
+      - src/ubuntu/sysbox/**
+      - src/ubuntu/virtualgl/**
+  - name1: ubuntu
+    name2: noble
+    base: ubuntu:24.04
+    bg: bg_noble.png
+    distro: ubuntu
+    dockerfile: dockerfile-kasm-core
+    changeFiles:
+      - dockerfile-kasm-core
+      - src/ubuntu/xfce/**
+      - src/ubuntu/xfce/.config/**
+      - src/ubuntu/xfce/.config/xfce4/**
+      - src/ubuntu/xfce/.config/xfce4/xfconf/**
+      - src/ubuntu/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/ubuntu/xfce/.config/xfce4/xfconf/single-application-xfce-perchannel-xml/**
+      - src/ubuntu/nvidia/**
+      - src/ubuntu/sysbox/**
+      - src/ubuntu/virtualgl/**
+  - name1: debian
+    name2: bullseye
+    base: debian:bullseye-slim
+    bg: bg_debian.svg
+    distro: debian
+    dockerfile: dockerfile-kasm-core
+    changeFiles:
+      - dockerfile-kasm-core
+      - src/debian/**
+      - src/debian/xfce/**
+      - src/debian/xfce/.config/**
+      - src/debian/xfce/.config/xfce4/**
+      - src/debian/xfce/.config/xfce4/xfconf/**
+      - src/debian/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/ubuntu/sysbox/**
+      - src/ubuntu/virtualgl/**
+  - name1: debian
+    name2: bookworm
+    base: debian:bookworm-slim
+    bg: bg_debian.svg
+    distro: debian
+    dockerfile: dockerfile-kasm-core
+    changeFiles:
+      - dockerfile-kasm-core
+      - src/debian/**
+      - src/debian/xfce/**
+      - src/debian/xfce/.config/**
+      - src/debian/xfce/.config/xfce4/**
+      - src/debian/xfce/.config/xfce4/xfconf/**
+      - src/debian/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/ubuntu/nvidia/**
+      - src/ubuntu/sysbox/**
+      - src/ubuntu/virtualgl/**
+  - name1: debian
+    name2: trixie
+    base: debian:trixie-slim
+    bg: bg_debian.svg
+    distro: debian
+    dockerfile: dockerfile-kasm-core
+    changeFiles:
+      - dockerfile-kasm-core
+      - src/debian/**
+      - src/debian/xfce/**
+      - src/debian/xfce/.config/**
+      - src/debian/xfce/.config/xfce4/**
+      - src/debian/xfce/.config/xfce4/xfconf/**
+      - src/debian/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/ubuntu/nvidia/**
+      - src/ubuntu/sysbox/**
+      - src/ubuntu/virtualgl/**
+  - name1: kali
+    name2: rolling
+    base: kalilinux/kali-rolling:latest
+    bg: bg_kasm.png
+    distro: kali
+    dockerfile: dockerfile-kasm-core
+    changeFiles:
+      - dockerfile-kasm-core
+      - src/kali/**
+      - src/kali/xfce/**
+      - src/kali/xfce/.config/**
+      - src/kali/xfce/.config/xfce4/**
+      - src/kali/xfce/.config/xfce4/xfconf/**
+      - src/kali/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/ubuntu/install/extra/kali.sh
+      - src/ubuntu/nvidia/**
+      - src/ubuntu/sysbox/**
+      - src/ubuntu/virtualgl/**
+  - name1: oracle
+    name2: 8
+    base: oraclelinux:8
+    bg: bg_oracle.png
+    distro: oracle8
+    dockerfile: dockerfile-kasm-core-oracle
+    changeFiles:
+      - dockerfile-kasm-core-oracle
+      - src/oracle8/**
+      - src/oracle8/xfce/**
+      - src/oracle8/xfce/.config/**
+      - src/oracle8/xfce/.config/xfce4/**
+      - src/oracle8/xfce/.config/xfce4/xfconf/**
+      - src/oracle8/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/oracle8/xfce/.config/xfce4/xfconf/single-application-xfce-perchannel-xml/**
+      - src/ubuntu/sysbox/**
+  - name1: oracle
+    name2: 9
+    base: oraclelinux:9
+    bg: bg_oracle.png
+    distro: oracle9
+    dockerfile: dockerfile-kasm-core-oracle
+    changeFiles:
+      - dockerfile-kasm-core-oracle
+      - src/oracle9/**
+      - src/oracle9/xfce/**
+      - src/oracle9/xfce/.config/**
+      - src/oracle9/xfce/.config/xfce4/**
+      - src/oracle9/xfce/.config/xfce4/xfconf/**
+      - src/oracle9/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/oracle9/xfce/.config/xfce4/xfconf/single-application-xfce-perchannel-xml/**
+      - src/ubuntu/sysbox/**
+  - name1: rhel
+    name2: 9
+    base: registry.access.redhat.com/ubi9/ubi
+    bg: bg_rhel.png
+    distro: rhel9
+    dockerfile: dockerfile-kasm-core-oracle
+    changeFiles:
+      - dockerfile-kasm-core-oracle
+      - src/rhel9/**
+      - src/rhel9/xfce/**
+      - src/rhel9/xfce/.config/**
+      - src/rhel9/xfce/.config/xfce4/**
+      - src/rhel9/xfce/.config/xfce4/xfconf/**
+      - src/rhel9/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/rhel9/xfce/.config/xfce4/xfconf/single-application-xfce-perchannel-xml/**
+      - src/ubuntu/install/rhel/**
+      - src/ubuntu/sysbox/**
+  - name1: rockylinux
+    name2: 8
+    base: rockylinux:8
+    bg: bg_rocky.png
+    distro: rockylinux8
+    dockerfile: dockerfile-kasm-core-oracle
+    changeFiles:
+      - dockerfile-kasm-core-oracle
+      - src/rockylinux8/**
+      - src/rockylinux8/xfce/**
+      - src/rockylinux8/xfce/.config/**
+      - src/rockylinux8/xfce/.config/xfce4/**
+      - src/rockylinux8/xfce/.config/xfce4/xfconf/**
+      - src/rockylinux8/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/ubuntu/sysbox/**
+  - name1: rockylinux
+    name2: 9
+    base: rockylinux:9
+    bg: bg_rocky.png
+    distro: rockylinux9
+    dockerfile: dockerfile-kasm-core-oracle
+    changeFiles:
+      - dockerfile-kasm-core-oracle
+      - src/rockylinux9/**
+      - src/rockylinux9/xfce/**
+      - src/rockylinux9/xfce/.config/**
+      - src/rockylinux9/xfce/.config/xfce4/**
+      - src/rockylinux9/xfce/.config/xfce4/xfconf/**
+      - src/rockylinux9/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/ubuntu/sysbox/**
+  - name1: almalinux
+    name2: 8
+    base: almalinux:8
+    bg: bg_almalinux.png
+    distro: almalinux8
+    dockerfile: dockerfile-kasm-core-oracle
+    changeFiles:
+      - dockerfile-kasm-core-oracle
+      - src/almalinux8/**
+      - src/almalinux8/xfce/**
+      - src/almalinux8/xfce/.config/**
+      - src/almalinux8/xfce/.config/xfce4/**
+      - src/almalinux8/xfce/.config/xfce4/xfconf/**
+      - src/almalinux8/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/ubuntu/sysbox/**
+  - name1: almalinux
+    name2: 9
+    base: almalinux:9
+    bg: bg_almalinux.png
+    distro: almalinux9
+    dockerfile: dockerfile-kasm-core-oracle
+    changeFiles:
+      - dockerfile-kasm-core-oracle
+      - src/almalinux9/**
+      - src/almalinux9/xfce/**
+      - src/almalinux9/xfce/.config/**
+      - src/almalinux9/xfce/.config/xfce4/**
+      - src/almalinux9/xfce/.config/xfce4/xfconf/**
+      - src/almalinux9/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/ubuntu/sysbox/**
+  - name1: opensuse
+    name2: 15
+    base: opensuse/leap:15.5
+    bg: bg_opensuse.png
+    distro: opensuse
+    dockerfile: dockerfile-kasm-core-suse
+    changeFiles:
+      - dockerfile-kasm-core-suse
+      - src/opensuse/**
+      - src/opensuse/xfce/**
+      - src/opensuse/xfce/.config/**
+      - src/opensuse/xfce/.config/xfce4/**
+      - src/opensuse/xfce/.config/xfce4/xfconf/**
+      - src/opensuse/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/ubuntu/sysbox/**
+  - name1: fedora
+    name2: 40
+    base: fedora:40
+    bg: bg_fedora.png
+    distro: fedora40
+    dockerfile: dockerfile-kasm-core-fedora
+    changeFiles:
+      - dockerfile-kasm-core-fedora
+      - src/fedora40/**
+      - src/fedora40/xfce/**
+      - src/fedora40/xfce/.config/**
+      - src/fedora40/xfce/.config/xfce4/**
+      - src/fedora40/xfce/.config/xfce4/xfconf/**
+      - src/fedora40/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+  - name1: fedora
+    name2: 41
+    base: fedora:41
+    bg: bg_fedora.png
+    distro: fedora41
+    dockerfile: dockerfile-kasm-core-fedora
+    changeFiles:
+      - dockerfile-kasm-core-fedora
+      - src/fedora41/**
+      - src/fedora41/xfce/**
+      - src/fedora41/xfce/.config/**
+      - src/fedora41/xfce/.config/xfce4/**
+      - src/fedora41/xfce/.config/xfce4/xfconf/**
+      - src/fedora41/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+  - name1: parrotos
+    name2: 6
+    base: parrotsec/core:6
+    bg: bg_parrotos6.jpg
+    distro: parrotos6
+    dockerfile: dockerfile-kasm-core
+    changeFiles:
+      - dockerfile-kasm-core
+      - src/parrotos6/**
+      - src/ubuntu/nvidia/**
+      - src/ubuntu/sysbox/**
+      - src/ubuntu/virtualgl/**
+      - src/parrotos6/**
+  - name1: alpine
+    name2: 319
+    base: alpine:3.19
+    bg: bg_alpine.png
+    distro: alpine
+    dockerfile: dockerfile-kasm-core-alpine
+    changeFiles:
+      - dockerfile-kasm-core-alpine
+      - src/alpine/**
+      - src/alpine/xfce/**
+      - src/alpine/xfce/.config/**
+      - src/alpine/xfce/.config/xfce4/**
+      - src/alpine/xfce/.config/xfce4/xfconf/**
+      - src/alpine/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+  - name1: alpine
+    name2: 320
+    base: alpine:3.20
+    bg: bg_alpine.png
+    distro: alpine
+    dockerfile: dockerfile-kasm-core-alpine
+    changeFiles:
+      - dockerfile-kasm-core-alpine
+      - src/alpine/**
+      - src/alpine/xfce/**
+      - src/alpine/xfce/.config/**
+      - src/alpine/xfce/.config/xfce4/**
+      - src/alpine/xfce/.config/xfce4/xfconf/**
+      - src/alpine/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+  - name1: alpine
+    name2: 321
+    base: alpine:3.21
+    bg: bg_alpine.png
+    distro: alpine
+    dockerfile: dockerfile-kasm-core-alpine
+    changeFiles:
+      - dockerfile-kasm-core-alpine
+      - src/alpine/**
+      - src/alpine/xfce/**
+      - src/alpine/xfce/.config/**
+      - src/alpine/xfce/.config/xfce4/**
+      - src/alpine/xfce/.config/xfce4/xfconf/**
+      - src/alpine/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+singleImages:
+  - name1: cuda
+    name2: jammy
+    base: nvidia/cuda:12.2.2-cudnn8-devel-ubuntu22.04
+    bg: bg_jammy.png
+    distro: ubuntu
+    dockerfile: dockerfile-kasm-core
+    changeFiles:
+      - dockerfile-kasm-core
+      - src/ubuntu/xfce/**
+      - src/ubuntu/xfce/.config/**
+      - src/ubuntu/xfce/.config/xfce4/**
+      - src/ubuntu/xfce/.config/xfce4/xfconf/**
+      - src/ubuntu/xfce/.config/xfce4/xfconf/xfce-perchannel-xml/**
+      - src/ubuntu/xfce/.config/xfce4/xfconf/single-application-xfce-perchannel-xml/**
+      - src/ubuntu/nvidia/**
+      - src/ubuntu/sysbox/**
+      - src/ubuntu/virtualgl/**

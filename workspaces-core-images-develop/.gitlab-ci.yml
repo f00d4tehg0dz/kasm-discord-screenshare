@@ -1,0 +1,97 @@
+############
+# Settings #
+############
+image: docker:28.0.0
+services:
+  - docker:28.0.0-dind
+
+include:
+  - template: Code-Quality.gitlab-ci.yml
+
+default:
+  retry: 2
+
+stages:
+  - template
+  - run
+  - test
+variables:
+  DOCKER_AUTH_CONFIG: ${_DOCKER_AUTH_CONFIG}
+  GIT_SUBMODULE_STRATEGY: normal
+  KASM_RELEASE: "1.18.0"
+  TEST_INSTALLER: "https://kasm-static-content.s3.amazonaws.com/kasm_release_1.18.0.09f70a.tar.gz"
+  SCAN_CONTAINERS: "true"
+  MIRROR_ORG_NAME: "kasmtech"
+before_script:
+  - export SANITIZED_BRANCH="$(echo ${CI_COMMIT_REF_NAME:0:64} | sed -r 's#^release/##' | sed 's/\//_/g')"
+
+#######################
+# Build from template #
+#######################
+template:
+  stage: template
+  rules:
+    - when: always
+  script:
+    - apk add py3-jinja2 py3-yaml
+    - cd ci-scripts
+    - python3 template-gitlab.py
+  tags:
+    - oci-amd-scheduled
+  artifacts:
+    paths:
+      - gitlab-ci.yml
+
+pipeline:
+  stage: run
+  rules:
+    - if: '$README_USERNAME_RUN || $README_PASSWORD_RUN || $QUAY_API_KEY_RUN || $DOCKERHUB_REVERT_RUN || $REVERT_IS_ROLLING_RUN'
+      when: never
+    - when: on_success
+  variables:
+    PARENT_PIPELINE_SOURCE: "$CI_PIPELINE_SOURCE"
+    RUN_SET: "$RUN_SET"    
+  trigger:
+    include:
+      - artifact: gitlab-ci.yml
+        job: template
+
+pipeline_readme:
+  stage: run
+  only:
+    variables:
+      - $README_USERNAME_RUN
+      - $README_PASSWORD_RUN
+  variables:
+      README_USERNAME: $README_USERNAME_RUN
+      README_PASSWORD: $README_PASSWORD_RUN
+  trigger:
+    include:
+      - artifact: gitlab-ci.yml
+        job: template
+
+pipeline_readme_quay:
+  stage: run
+  only:
+    variables:
+      - $QUAY_API_KEY_RUN
+  variables:
+      QUAY_API_KEY: $QUAY_API_KEY_RUN
+  trigger:
+    include:
+      - artifact: gitlab-ci.yml
+        job: template
+
+pipeline_revert:
+  stage: run
+  only:
+    variables:
+      - $DOCKERHUB_REVERT_RUN
+      - $REVERT_IS_ROLLING_RUN
+  variables:
+      DOCKERHUB_REVERT: $DOCKERHUB_REVERT_RUN
+      REVERT_IS_ROLLING: $REVERT_IS_ROLLING_RUN
+  trigger:
+    include:
+      - artifact: gitlab-ci.yml
+        job: template

@@ -24,3 +24,4 @@ plex-firefox-ext/build/background.js
 /src/opensuse
 /src/oracle
 discord-websocket-nginx.conf
+vnc_startup.sh.bak

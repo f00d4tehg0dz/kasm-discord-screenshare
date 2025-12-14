@@ -1,0 +1,95 @@
+ARG BASE_TAG="develop"
+ARG BASE_IMAGE="core-ubuntu-noble"
+FROM kasmweb/$BASE_IMAGE:$BASE_TAG
+
+USER root
+
+ENV HOME /home/kasm-default-profile
+ENV STARTUPDIR /dockerstartup
+WORKDIR $HOME
+
+### Envrionment config 
+ENV DEBIAN_FRONTEND=noninteractive \
+    SKIP_CLEAN=true \
+    KASM_RX_HOME=$STARTUPDIR/kasmrx \
+    DONT_PROMPT_WSL_INSTALL="No_Prompt_please" \
+    INST_DIR=$STARTUPDIR/install \
+    INST_SCRIPTS="/ubuntu/install/tools/install_tools_deluxe.sh \
+                  /ubuntu/install/misc/install_tools.sh \
+                  /ubuntu/install/chrome/install_chrome.sh \
+                  /ubuntu/install/chromium/install_chromium.sh \
+                  /ubuntu/install/firefox/install_firefox.sh \
+                  /ubuntu/install/vs_code/install_vs_code.sh \
+                  /ubuntu/install/discord/install_discord.sh \
+                  /ubuntu/install/cleanup/cleanup.sh"
+
+
+# Copy install scripts from workspaces-images (ubuntu and common)
+COPY ./workspaces-images/src/ $INST_DIR
+
+# Run installations
+RUN \
+  for SCRIPT in $INST_SCRIPTS; do \
+    bash ${INST_DIR}${SCRIPT} || exit 1; \
+  done && \
+  $STARTUPDIR/set_user_permission.sh $HOME && \
+  rm -f /etc/X11/xinit/Xclients && \
+  chown 1000:0 $HOME && \
+  mkdir -p /home/kasm-user && \
+  chown -R 1000:0 /home/kasm-user && \
+  rm -Rf ${INST_DIR}
+
+COPY ./workspaces-images/src/ubuntu/install/discord/custom_startup.sh $STARTUPDIR/custom_startup.sh
+RUN chmod +x $STARTUPDIR/custom_startup.sh
+RUN chmod 755 $STARTUPDIR/custom_startup.sh
+
+# Install Vesktop from package (Discord and VLC are installed via scripts)
+RUN wget -O vesktop.deb "https://github.com/Vencord/Vesktop/releases/download/v1.6.1/vesktop_1.6.1_amd64.deb" \
+    && apt-get install -y ./vesktop.deb \
+    && rm vesktop.deb
+
+# Download and install WebCord .deb package
+RUN wget https://github.com/SpacingBat3/WebCord/releases/download/v4.12.1/webcord_4.12.1_amd64.deb \
+    && apt-get install -y ./webcord_4.12.1_amd64.deb \
+    && rm webcord_4.12.1_amd64.deb
+
+# Create Desktop directory for kasm-user
+RUN mkdir -p /home/kasm-user/Desktop/
+
+# Create desktop shortcuts for Vesktop and WebCord (Discord via Flatpak, VLC/Firefox via install scripts)
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=Vesktop\nComment=Vencord Vesktop\nExec=/usr/bin/vesktop --no-sandbox\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=AudioVideo;\n' > $HOME/Desktop/vesktop.desktop \
+    && chmod +x $HOME/Desktop/vesktop.desktop
+
+RUN echo '[Desktop Entry]\nVersion=1.0\nName=WebCord\nComment=WebCord Client\nExec=webcord --no-sandbox\nIcon=/usr/share/icons/ubuntu-mono-dark/apps/48/discord.png\nType=Application\nCategories=Network;Communication;\n' > $HOME/Desktop/webcord.desktop \
+    && chmod +x $HOME/Desktop/webcord.desktop
+
+# Fix permissions on all desktop files and home directories
+RUN chown -R 1000:0 $HOME \
+    && chmod -R 755 $HOME/Desktop \
+    && find $HOME/Desktop -name "*.desktop" -exec chmod 644 {} \;
+
+# Ensure kasm-user home is properly set up with correct permissions
+RUN mkdir -p /home/kasm-user/Desktop \
+    && cp -rp /home/kasm-default-profile/. /home/kasm-user/ || true \
+    && chown -R 1000:0 /home/kasm-user \
+    && chmod -R 755 /home/kasm-user/Desktop
+
+COPY ./vnc_startup.sh $STARTUPDIR/vnc_startup.sh
+# Fix Windows line endings
+RUN sed -i 's/\r$//' $STARTUPDIR/vnc_startup.sh && chmod +x $STARTUPDIR/vnc_startup.sh
+
+# Copy custom startup script for Plex Discord integration
+COPY ./custom_startup-plex-discord.sh $STARTUPDIR/custom_startup-plex-discord.sh
+# Fix Windows line endings and make executable
+RUN sed -i 's/\r$//' $STARTUPDIR/custom_startup-plex-discord.sh && chmod +x $STARTUPDIR/custom_startup-plex-discord.sh
+
+# Copy prebuilt Firefox extension
+RUN mkdir -p /app/plex-firefox-ext
+COPY ./plex-firefox-ext/plex-discord-control@local.xpi /app/plex-firefox-ext/
+
+# Userspace Runtime
+ENV HOME /home/kasm-user
+WORKDIR $HOME
+USER 1000
+
+CMD ["--tail-log"]

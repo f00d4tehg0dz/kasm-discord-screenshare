@@ -141,13 +141,35 @@ class PlexDiscordServer:
     async def handle_client(self, websocket):
         """Handle WebSocket client connections (compatible with websockets 3.0+)"""
         client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
+        client_ip = websocket.remote_address[0]
         try:
             # In websockets 3.0+, the path is available via websocket.request.path
-            path = websocket.request.path if hasattr(websocket, 'request') else '/browser'
-
-            if path == '/discord': logger.info(f'Discord bot connected from {client_id}'); await self.handle_discord_bot(websocket)
-            elif path == '/browser': logger.info(f'Browser client connected from {client_id}'); await self.handle_browser_client(websocket)
-            else: await websocket.send(json.dumps({'error': 'Unknown endpoint. Use /discord or /browser'}))
+            raw_path = websocket.request.path if hasattr(websocket, 'request') else None
+            logger.info(f'Connection from {client_id} with path: {raw_path}')
+            
+            # Normalize path - handle None, empty, or root path
+            path = raw_path.lower().rstrip('/') if raw_path else ''
+            
+            # Determine client type based on path and source IP
+            # - /discord or /discord/ -> Discord bot
+            # - /browser or /browser/ -> Browser extension
+            # - For unknown paths: localhost = browser, external = Discord bot (Cloudflare tunnel)
+            is_localhost = client_ip in ('127.0.0.1', '::1', 'localhost')
+            
+            if path == '/discord' or path.startswith('/discord'):
+                logger.info(f'Discord bot connected from {client_id}')
+                await self.handle_discord_bot(websocket)
+            elif path == '/browser' or path.startswith('/browser'):
+                logger.info(f'Browser client connected from {client_id}')
+                await self.handle_browser_client(websocket)
+            elif not is_localhost:
+                # External connection with unknown/root path - likely Discord bot via Cloudflare tunnel
+                logger.info(f'External connection from {client_id} (path: {raw_path}) - treating as Discord bot')
+                await self.handle_discord_bot(websocket)
+            else:
+                # Localhost connection with unknown path - default to browser
+                logger.info(f'Localhost connection from {client_id} (path: {raw_path}) - treating as browser')
+                await self.handle_browser_client(websocket)
         except websockets.exceptions.ConnectionClosed: logger.info(f'Client disconnected: {client_id}')
         except Exception as e: logger.error(f'Error handling client: {e}')
     async def handle_discord_bot(self, websocket):
@@ -179,7 +201,16 @@ class PlexDiscordServer:
                     data = json.loads(message)
                     if data.get('type') == 'heartbeat': logger.debug(f'Heartbeat from browser client')
                     elif data.get('type') == 'status': logger.debug(f'Status from browser: {data}')
-                    elif data.get('id'): logger.debug(f'Browser response: {data}'); await self.send_to_ipc(data)
+                    elif data.get('id'):
+                        logger.debug(f'Browser response: {data}')
+                        await self.send_to_ipc(data)
+                        # Also send directly to Discord bot if connected to this instance
+                        if self.discord_bot:
+                            try:
+                                await self.discord_bot.send(json.dumps(data))
+                                logger.info(f'Routed response directly to Discord bot: {data.get("id")}')
+                            except Exception as e:
+                                logger.debug(f'Failed to send to Discord bot: {e}')
                 except json.JSONDecodeError: pass
         except websockets.exceptions.ConnectionClosed: logger.info('Browser client disconnected')
         finally: self.clients.discard(websocket); logger.info(f'Browser clients remaining: {len(self.clients)}')

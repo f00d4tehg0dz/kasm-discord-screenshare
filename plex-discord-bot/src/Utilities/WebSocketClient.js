@@ -18,6 +18,10 @@ class WebSocketClient {
 		this.reconnectDelay = parseInt(process.env.RECONNECT_DELAY || '3000', 10);
 		this.pendingRequests = new Map();
 		this.requestId = 0;
+		
+		// Cloudflare Zero Trust Service Token credentials
+		this.cfAccessClientId = process.env.CF_ACCESS_CLIENT_ID || '';
+		this.cfAccessClientSecret = process.env.CF_ACCESS_CLIENT_SECRET || '';
 	}
 
 	/**
@@ -27,7 +31,16 @@ class WebSocketClient {
 		return new Promise((resolve, reject) => {
 			try {
 				// Options for WebSocket connection
-				const options = {};
+				const options = {
+					headers: {},
+				};
+
+				// Add Cloudflare Access Service Token headers if configured
+				if (this.cfAccessClientId && this.cfAccessClientSecret) {
+					options.headers['CF-Access-Client-Id'] = this.cfAccessClientId;
+					options.headers['CF-Access-Client-Secret'] = this.cfAccessClientSecret;
+					logger.log('Using Cloudflare Access Service Token for authentication');
+				}
 
 				// For WSS connections, create an HTTPS agent with certificate bypass
 				if (this.url.startsWith('wss://')) {
